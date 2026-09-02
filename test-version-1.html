@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign in · Invoice Creator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,440;6..72,500&family=Inter:wght@400;450;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --paper: #fbfaf7;
+      --ink: #1c1b19;
+      --ink-soft: #605c54;
+      --line: #e6e2d9;
+      --line-strong: #d3cec2;
+      --field: #ffffff;
+    }
+
+    html { -webkit-font-smoothing: antialiased; }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      font-family: "Inter", system-ui, sans-serif;
+      color: var(--ink);
+      background: var(--paper);
+    }
+
+    main {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 24px;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 380px;
+    }
+
+    .wordmark {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin-bottom: 44px;
+    }
+    .wordmark b {
+      font-family: "Newsreader", Georgia, serif;
+      font-weight: 500;
+      font-size: 19px;
+      letter-spacing: -0.01em;
+    }
+    .wordmark span {
+      font-size: 12px;
+      color: var(--ink-soft);
+      letter-spacing: 0.02em;
+    }
+
+    h1 {
+      font-family: "Newsreader", Georgia, serif;
+      font-weight: 440;
+      font-size: 30px;
+      letter-spacing: -0.015em;
+      margin-bottom: 8px;
+    }
+    .lede {
+      font-size: 14px;
+      color: var(--ink-soft);
+      margin-bottom: 32px;
+    }
+
+    form { display: flex; flex-direction: column; gap: 18px; }
+
+    .field label {
+      display: block;
+      font-size: 12.5px;
+      font-weight: 500;
+      margin-bottom: 7px;
+    }
+    .field input {
+      width: 100%;
+      height: 42px;
+      padding: 0 12px;
+      font: inherit;
+      font-size: 14px;
+      color: var(--ink);
+      background: var(--field);
+      border: 1px solid var(--line-strong);
+      border-radius: 7px;
+      transition: border-color 120ms ease, box-shadow 120ms ease;
+    }
+    .field input::placeholder { color: #b3ad9f; }
+    .field input:focus {
+      outline: none;
+      border-color: var(--ink);
+      box-shadow: 0 0 0 3px rgba(28, 27, 25, 0.08);
+    }
+
+    .label-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+    }
+    .label-row a {
+      font-size: 12px;
+      color: var(--ink-soft);
+      text-decoration: none;
+      border-bottom: 1px solid var(--line-strong);
+      padding-bottom: 1px;
+    }
+    .label-row a:hover { color: var(--ink); border-color: var(--ink); }
+
+    button {
+      height: 44px;
+      margin-top: 6px;
+      font: inherit;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--paper);
+      background: var(--ink);
+      border: 1px solid var(--ink);
+      border-radius: 7px;
+      cursor: pointer;
+      transition: background 120ms ease;
+    }
+    button:hover { background: #000; }
+    button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+    .remember {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--ink-soft);
+      cursor: pointer;
+      user-select: none;
+    }
+    .remember input { width: 14px; height: 14px; accent-color: var(--ink); }
+
+    .signup {
+      margin-top: 28px;
+      padding-top: 20px;
+      border-top: 1px solid var(--line);
+      font-size: 13px;
+      color: var(--ink-soft);
+    }
+    .signup a {
+      color: var(--ink);
+      text-decoration: none;
+      border-bottom: 1px solid var(--line-strong);
+    }
+    .signup a:hover { border-color: var(--ink); }
+
+    footer {
+      padding: 20px 24px;
+      text-align: center;
+      font-size: 11.5px;
+      color: #a39d8d;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="card">
+      <div class="wordmark">
+        <b>Invoice Creator</b>
+      </div>
+
+      <h1>Sign in</h1>
+      <p class="lede">Welcome back. Enter your details to continue.</p>
+
+      <form onsubmit="return false;">
+        <div class="field">
+          <label for="email">Email</label>
+          <input id="email" type="email" placeholder="you@company.com" autocomplete="username" autofocus>
+        </div>
+
+        <div class="field">
+          <div class="label-row">
+            <label for="password">Password</label>
+            <a href="#">Forgot?</a>
+          </div>
+          <input id="password" type="password" placeholder="••••••••" autocomplete="current-password">
+        </div>
+
+        <label class="remember">
+          <input type="checkbox"> Keep me signed in on this device
+        </label>
+
+        <button type="submit">Sign in</button>
+      </form>
+
+      <p class="signup">Don't have an account? <a href="#">Sign up</a></p>
+    </div>
+  </main>
+
+  <footer>© 2026 Invoice Creator</footer>
+</body>
+</html>
