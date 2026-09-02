@@ -3,25 +3,118 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Test Version 1</title>
+  <title>Sign In — Test Version Mark 1</title>
   <style>
+    * { box-sizing: border-box; }
     body {
       margin: 0;
       display: flex;
       align-items: center;
       justify-content: center;
       min-height: 100vh;
-      font-family: system-ui, sans-serif;
+      font-family: system-ui, -apple-system, sans-serif;
       background: #1e1e1e;
       color: #ff69b4;
     }
+    .card {
+      width: 100%;
+      max-width: 360px;
+      padding: 2.5rem 2rem;
+      background: #262626;
+      border: 1px solid #3a3a3a;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    }
     h1 {
-      font-size: 3rem;
-      letter-spacing: 0.1em;
+      margin: 0 0 0.25rem;
+      font-size: 1.5rem;
+      letter-spacing: 0.05em;
+      text-align: center;
+    }
+    p.sub {
+      margin: 0 0 1.75rem;
+      text-align: center;
+      color: #b06a8c;
+      font-size: 0.9rem;
+    }
+    label {
+      display: block;
+      margin-bottom: 0.4rem;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    input {
+      width: 100%;
+      padding: 0.7rem 0.85rem;
+      margin-bottom: 1.1rem;
+      background: #1e1e1e;
+      border: 1px solid #3a3a3a;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 0.95rem;
+    }
+    input:focus {
+      outline: none;
+      border-color: #ff69b4;
+    }
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.5rem;
+      font-size: 0.82rem;
+    }
+    .row label {
+      text-transform: none;
+      letter-spacing: normal;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    a { color: #ff69b4; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    button {
+      width: 100%;
+      padding: 0.8rem;
+      background: #ff69b4;
+      border: none;
+      border-radius: 8px;
+      color: #1e1e1e;
+      font-size: 0.95rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      cursor: pointer;
+    }
+    button:hover { background: #ff85c2; }
+    p.foot {
+      margin: 1.5rem 0 0;
+      text-align: center;
+      font-size: 0.85rem;
+      color: #b06a8c;
     }
   </style>
 </head>
 <body>
-  <h1>TEST VERSION MARK 1</h1>
+  <form class="card" onsubmit="return false;">
+    <h1>TEST VERSION MARK 1</h1>
+    <p class="sub">Sign in to your account</p>
+
+    <label for="email">Email</label>
+    <input id="email" type="email" placeholder="you@example.com" autocomplete="username">
+
+    <label for="password">Password</label>
+    <input id="password" type="password" placeholder="••••••••" autocomplete="current-password">
+
+    <div class="row">
+      <label><input type="checkbox"> Remember me</label>
+      <a href="#">Forgot password?</a>
+    </div>
+
+    <button type="submit">Sign In</button>
+
+    <p class="foot">Don't have an account? <a href="#">Sign up</a></p>
+  </form>
 </body>
 </html>
