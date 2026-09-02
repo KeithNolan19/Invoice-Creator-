@@ -3,118 +3,254 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title></title>
+  <title>Sign In — Invoice Creator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
-    * { box-sizing: border-box; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #08090c;
+      --panel: rgba(255, 255, 255, 0.04);
+      --border: rgba(255, 255, 255, 0.09);
+      --text: #f4f5f7;
+      --muted: #9aa0ae;
+      --accent: #7c5cff;
+      --accent-2: #29d3c2;
+    }
     body {
-      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 1.5rem;
+      font-family: "Inter", system-ui, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      overflow: hidden;
+    }
+    /* animated ambient blobs */
+    .aurora {
+      position: fixed;
+      inset: -20%;
+      z-index: 0;
+      filter: blur(90px);
+      opacity: 0.55;
+      pointer-events: none;
+    }
+    .aurora::before, .aurora::after {
+      content: "";
+      position: absolute;
+      width: 46vw;
+      height: 46vw;
+      border-radius: 50%;
+    }
+    .aurora::before {
+      background: radial-gradient(circle, var(--accent), transparent 60%);
+      top: 5%; left: 8%;
+      animation: drift1 14s ease-in-out infinite alternate;
+    }
+    .aurora::after {
+      background: radial-gradient(circle, var(--accent-2), transparent 60%);
+      bottom: 0%; right: 6%;
+      animation: drift2 18s ease-in-out infinite alternate;
+    }
+    @keyframes drift1 { to { transform: translate(12%, 18%) scale(1.15); } }
+    @keyframes drift2 { to { transform: translate(-14%, -10%) scale(1.2); } }
+
+    .shell {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      max-width: 940px;
+      display: grid;
+      grid-template-columns: 1.05fr 1fr;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      overflow: hidden;
+      backdrop-filter: blur(24px) saturate(160%);
+      -webkit-backdrop-filter: blur(24px) saturate(160%);
+      box-shadow: 0 40px 120px rgba(0, 0, 0, 0.6);
+    }
+
+    /* left brand pane */
+    .pane {
+      padding: 3rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      background:
+        linear-gradient(160deg, rgba(124, 92, 255, 0.22), transparent 55%),
+        linear-gradient(20deg, rgba(41, 211, 194, 0.16), transparent 50%);
+      border-right: 1px solid var(--border);
+    }
+    .logo {
       display: flex;
       align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      font-family: system-ui, -apple-system, sans-serif;
-      background: #1e1e1e;
-      color: #1e90ff;
+      gap: 0.7rem;
+      font-family: "Space Grotesk", sans-serif;
+      font-weight: 600;
+      font-size: 1.1rem;
     }
-    .card {
-      width: 100%;
-      max-width: 360px;
-      padding: 2.5rem 2rem;
-      background: #262626;
-      border: 1px solid #3a3a3a;
-      border-radius: 12px;
-      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    .logo .glyph {
+      width: 38px; height: 38px;
+      border-radius: 11px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      display: grid; place-items: center;
+      font-weight: 700; color: #fff;
+      box-shadow: 0 8px 24px rgba(124, 92, 255, 0.45);
     }
-    h1 {
-      margin: 0 0 0.25rem;
-      font-size: 1.5rem;
-      letter-spacing: 0.05em;
-      text-align: center;
+    .pane h2 {
+      font-family: "Space Grotesk", sans-serif;
+      font-size: 2rem;
+      line-height: 1.2;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.75rem;
     }
-    p.sub {
-      margin: 0 0 1.75rem;
-      text-align: center;
-      color: #6a90b0;
-      font-size: 0.9rem;
-    }
-    label {
+    .pane p { color: var(--muted); font-size: 0.95rem; line-height: 1.6; max-width: 34ch; }
+    .stats { display: flex; gap: 2rem; }
+    .stats div { font-size: 0.8rem; color: var(--muted); }
+    .stats b {
       display: block;
+      font-family: "Space Grotesk", sans-serif;
+      font-size: 1.3rem;
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    /* right form pane */
+    .form-pane { padding: 3rem; display: flex; flex-direction: column; justify-content: center; }
+    .form-pane h1 {
+      font-family: "Space Grotesk", sans-serif;
+      font-size: 1.55rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
       margin-bottom: 0.4rem;
-      font-size: 0.8rem;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
     }
-    input {
+    .form-pane .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 2rem; }
+
+    .float {
+      position: relative;
+      margin-bottom: 1.15rem;
+    }
+    .float input {
       width: 100%;
-      padding: 0.7rem 0.85rem;
-      margin-bottom: 1.1rem;
-      background: #1e1e1e;
-      border: 1px solid #3a3a3a;
-      border-radius: 8px;
-      color: #fff;
+      padding: 1.15rem 1rem 0.5rem;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      color: var(--text);
       font-size: 0.95rem;
+      transition: border-color 0.18s, box-shadow 0.18s, background 0.18s;
     }
-    input:focus {
-      outline: none;
-      border-color: #1e90ff;
+    .float label {
+      position: absolute;
+      left: 1rem;
+      top: 0.9rem;
+      font-size: 0.95rem;
+      color: var(--muted);
+      pointer-events: none;
+      transition: all 0.16s ease;
     }
+    .float input:focus,
+    .float input:not(:placeholder-shown) {
+      border-color: var(--accent);
+      background: rgba(124, 92, 255, 0.06);
+    }
+    .float input:focus { box-shadow: 0 0 0 4px rgba(124, 92, 255, 0.18); }
+    .float input:focus + label,
+    .float input:not(:placeholder-shown) + label {
+      top: 0.4rem;
+      font-size: 0.7rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+
     .row {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 1.5rem;
-      font-size: 0.82rem;
+      margin: 0.25rem 0 1.6rem;
+      font-size: 0.85rem;
     }
-    .row label {
-      text-transform: none;
-      letter-spacing: normal;
-      margin: 0;
-      display: flex;
-      align-items: center;
-      gap: 0.4rem;
-    }
-    a { color: #1e90ff; text-decoration: none; }
+    .remember { display: flex; align-items: center; gap: 0.5rem; color: var(--muted); cursor: pointer; }
+    .remember input { accent-color: var(--accent); width: 15px; height: 15px; }
+    a { color: var(--accent); text-decoration: none; font-weight: 500; }
     a:hover { text-decoration: underline; }
+
     button {
       width: 100%;
-      padding: 0.8rem;
-      background: #1e90ff;
+      padding: 0.95rem;
       border: none;
-      border-radius: 8px;
-      color: #1e1e1e;
+      border-radius: 12px;
+      font-family: "Space Grotesk", sans-serif;
       font-size: 0.95rem;
       font-weight: 600;
-      letter-spacing: 0.05em;
+      color: #fff;
       cursor: pointer;
+      background: linear-gradient(135deg, var(--accent), #9d7bff);
+      box-shadow: 0 12px 30px rgba(124, 92, 255, 0.4);
+      transition: transform 0.06s ease, box-shadow 0.18s ease, filter 0.18s;
     }
-    button:hover { background: #4da6ff; }
-    p.foot {
-      margin: 1.5rem 0 0;
-      text-align: center;
-      font-size: 0.85rem;
-      color: #6a90b0;
+    button:hover { filter: brightness(1.08); box-shadow: 0 16px 40px rgba(124, 92, 255, 0.55); }
+    button:active { transform: translateY(1px); }
+
+    .foot { margin-top: 1.6rem; text-align: center; font-size: 0.88rem; color: var(--muted); }
+
+    @media (max-width: 760px) {
+      .shell { grid-template-columns: 1fr; max-width: 420px; }
+      .pane { display: none; }
+      .form-pane { padding: 2.5rem 2rem; }
     }
   </style>
 </head>
 <body>
-  <form class="card" onsubmit="return false;">
-    
-    <p class="sub">Sign in to your account</p>
+  <div class="aurora"></div>
 
-    <label for="email">Email</label>
-    <input id="email" type="email" placeholder="you@example.com" autocomplete="username">
+  <div class="shell">
+    <aside class="pane">
+      <div class="logo">
+        <span class="glyph">IC</span>
+        Invoice Creator
+      </div>
+      <div>
+        <h2>Invoices that get you paid faster.</h2>
+        <p>Create, send, and track professional invoices in seconds. Sign in to pick up where you left off.</p>
+      </div>
+      <div class="stats">
+        <div><b>12k+</b> invoices sent</div>
+        <div><b>4.9★</b> user rating</div>
+        <div><b>98%</b> paid on time</div>
+      </div>
+    </aside>
 
-    <label for="password">Password</label>
-    <input id="password" type="password" placeholder="••••••••" autocomplete="current-password">
+    <main class="form-pane">
+      <form onsubmit="return false;">
+        <h1>Sign in</h1>
+        <p class="sub">Enter your credentials to access your account</p>
 
-    <div class="row">
-      <label><input type="checkbox"> Remember me</label>
-      <a href="#">Forgot password?</a>
-    </div>
+        <div class="float">
+          <input id="email" type="email" placeholder=" " autocomplete="username">
+          <label for="email">Email address</label>
+        </div>
 
-    <button type="submit">Sign In</button>
+        <div class="float">
+          <input id="password" type="password" placeholder=" " autocomplete="current-password">
+          <label for="password">Password</label>
+        </div>
 
-    <p class="foot">Don't have an account? <a href="#">Sign up</a></p>
-  </form>
+        <div class="row">
+          <label class="remember"><input type="checkbox"> Keep me signed in</label>
+          <a href="#">Forgot password?</a>
+        </div>
+
+        <button type="submit">Sign in</button>
+
+        <p class="foot">New to Invoice Creator? <a href="#">Create an account</a></p>
+      </form>
+    </main>
+  </div>
 </body>
 </html>
