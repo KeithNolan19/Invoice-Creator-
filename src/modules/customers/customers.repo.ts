@@ -34,22 +34,30 @@ export interface CustomerInput {
 
 const COLUMNS =
   "id, tenant_id, name, email, address_line1, address_line2, city, region, postal_code, country, tax_number, notes, archived_at, created_by, created_at, updated_at";
+const COLUMNS_C = COLUMNS.split(", ").map((c) => `c.${c}`).join(", ");
+
+export interface CustomerListRow extends CustomerRow {
+  invoice_count: number;
+}
 
 /** RLS scopes every query below to the caller's tenant. */
 export async function listCustomers(
   q: Queryable,
   opts: { includeArchived?: boolean; search?: string } = {},
-): Promise<CustomerRow[]> {
+): Promise<CustomerListRow[]> {
   const where: string[] = [];
   const params: unknown[] = [];
-  if (!opts.includeArchived) where.push("archived_at IS NULL");
+  if (!opts.includeArchived) where.push("c.archived_at IS NULL");
   if (opts.search) {
     params.push(`%${opts.search.trim()}%`);
-    where.push(`(name ILIKE $${params.length} OR email ILIKE $${params.length})`);
+    where.push(`(c.name ILIKE $${params.length} OR c.email ILIKE $${params.length})`);
   }
   const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
-  const { rows } = await q.query<CustomerRow>(
-    `SELECT ${COLUMNS} FROM customers ${clause} ORDER BY lower(name) ASC`,
+  const { rows } = await q.query<CustomerListRow>(
+    `SELECT ${COLUMNS_C},
+            (SELECT count(*) FROM invoices i WHERE i.customer_id = c.id)::int AS invoice_count
+       FROM customers c ${clause}
+      ORDER BY lower(c.name) ASC`,
     params,
   );
   return rows;
@@ -159,5 +167,43 @@ export function serializeCustomer(row: CustomerRow) {
     archived: row.archived_at !== null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+export function serializeCustomerListItem(row: CustomerListRow) {
+  return { ...serializeCustomer(row), invoiceCount: row.invoice_count };
+}
+
+export interface CustomerInvoiceStats {
+  invoice_count: number;
+  total_cents: string;
+  paid_cents: string;
+  outstanding_cents: string;
+}
+
+/** Aggregate invoice figures for one customer (RLS-scoped). */
+export async function getCustomerInvoiceStats(
+  q: Queryable,
+  customerId: string,
+): Promise<CustomerInvoiceStats> {
+  const { rows } = await q.query<CustomerInvoiceStats>(
+    `SELECT count(*)::int AS invoice_count,
+            coalesce(sum(total_cents), 0) AS total_cents,
+            coalesce(sum(total_cents) FILTER (WHERE payment_status = 'paid'), 0) AS paid_cents,
+            coalesce(sum(total_cents) FILTER (
+              WHERE payment_status IN ('unpaid','pending') AND status NOT IN ('draft','void')
+            ), 0) AS outstanding_cents
+       FROM invoices WHERE customer_id = $1`,
+    [customerId],
+  );
+  return rows[0]!;
+}
+
+export function serializeCustomerStats(s: CustomerInvoiceStats) {
+  return {
+    invoiceCount: s.invoice_count,
+    totalCents: Number(s.total_cents),
+    paidCents: Number(s.paid_cents),
+    outstandingCents: Number(s.outstanding_cents),
   };
 }

@@ -38,6 +38,11 @@ const patchSchema = z
 
 const listQuerySchema = z.object({
   tenantId: z.string().uuid().optional(),
+  status: z.enum(["draft", "sent", "paid", "void"]).optional(),
+  paymentStatus: z.enum(["unpaid", "pending", "paid"]).optional(),
+  overdue: z.enum(["true", "1"]).optional(),
+  customerId: z.string().uuid().optional(),
+  search: z.string().trim().max(120).optional(),
 });
 
 export function invoiceRoutes(db: Db): Router {
@@ -46,12 +51,19 @@ export function invoiceRoutes(db: Db): Router {
 
   router.get("/", async (req, res) => {
     const principal = requireAuth(req);
-    const { tenantId } = listQuerySchema.parse(req.query);
+    const query = listQuerySchema.parse(req.query);
 
     const rows = await db.withContext(principal, (q) =>
-      // A tenantId filter is honoured only for admins; RLS already restricts
-      // everyone else to their own tenant regardless of the query string.
-      listInvoices(q, { tenantId: principal.isAdmin ? tenantId : null }),
+      listInvoices(q, {
+        // A tenantId filter is honoured only for admins; RLS already restricts
+        // everyone else to their own tenant regardless of the query string.
+        tenantId: principal.isAdmin ? query.tenantId : null,
+        status: query.status,
+        paymentStatus: query.paymentStatus,
+        overdue: query.overdue !== undefined,
+        customerId: query.customerId,
+        search: query.search,
+      }),
     );
     res.json({ invoices: rows.map(serializeInvoice) });
   });

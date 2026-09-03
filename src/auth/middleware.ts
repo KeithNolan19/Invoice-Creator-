@@ -80,6 +80,19 @@ export const requireAdmin: RequestHandler = (req, _res, next) => {
 };
 
 /**
+ * Gate for the customer-facing application: the caller must be a tenant user
+ * (not a platform admin, who uses the Admin Control Centre). Resolved from the
+ * DB-backed `req.auth`.
+ */
+export const requireTenantUser: RequestHandler = (req, _res, next) => {
+  if (!req.auth) return next(unauthorized());
+  if (req.auth.role !== "user" || !req.auth.tenantId) {
+    return next(forbidden("This area is for tenant users"));
+  }
+  next();
+};
+
+/**
  * Gate for tenant-admin-only actions (business settings, the Fire.com
  * integration, team management, voiding invoices). Resolved from `req.auth`,
  * which the DB row populates — never from the token or request body. Platform

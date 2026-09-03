@@ -7,12 +7,16 @@ import { errorHandler, notFound } from "./errors.ts";
 import { LoginRateLimiter } from "./rate-limit.ts";
 import { adminRoutes } from "../modules/admin/admin.routes.ts";
 import { authRoutes } from "../modules/auth/auth.routes.ts";
+import { customerRoutes } from "../modules/customers/customers.routes.ts";
+import { dashboardRoutes } from "../modules/dashboard/dashboard.routes.ts";
 import { invoiceRoutes } from "../modules/invoices/invoices.routes.ts";
+import { settingsRoutes } from "../modules/settings/settings.routes.ts";
 import { teamRoutes } from "../modules/team/team.routes.ts";
 import { tenantRoutes } from "../modules/tenants/tenants.routes.ts";
 import { userRoutes } from "../modules/users/users.routes.ts";
 
 const adminUiDir = fileURLToPath(new URL("../../web/admin/", import.meta.url));
+const appUiDir = fileURLToPath(new URL("../../web/app/", import.meta.url));
 
 export interface AppOptions {
   /** Login brute-force protection. Defaults to on outside tests. */
@@ -46,12 +50,17 @@ export function createApp(db: Db, options: AppOptions = {}): Express {
   app.use("/api/tenants", tenantRoutes(db));
   app.use("/api/users", userRoutes(db));
   app.use("/api/team", teamRoutes(db));
+  app.use("/api/dashboard", dashboardRoutes(db));
+  app.use("/api/customers", customerRoutes(db));
+  app.use("/api/settings", settingsRoutes(db));
   app.use("/api/invoices", invoiceRoutes(db));
   app.use("/api/admin", adminRoutes(db));
 
-  // Static admin UI. Plain HTML/CSS/JS that calls /api/admin/* with a bearer
-  // token — it holds no credentials and is granted no privileges of its own.
+  // Static single-page apps. Both are plain HTML/CSS/JS that call /api/* with a
+  // bearer token — they hold no credentials and are granted no privileges of
+  // their own; the server enforces auth + RLS on every call.
   app.use("/admin", express.static(adminUiDir, { extensions: ["html"] }));
+  app.use("/app", express.static(appUiDir, { extensions: ["html"] }));
 
   app.use((_req, _res, next) => next(notFound("Route not found")));
   app.use(errorHandler);

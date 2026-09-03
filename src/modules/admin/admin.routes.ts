@@ -93,6 +93,12 @@ export function adminRoutes(db: Db): Router {
     try {
       const tenant = await db.withContext(principal, async (q) => {
         const created = await createTenant(q, { name: body.name, slug });
+        // Every tenant gets exactly one settings row (matches migration 008's
+        // backfill for pre-existing tenants).
+        await q.query(
+          "INSERT INTO tenant_settings (tenant_id, business_name) VALUES ($1, $2) ON CONFLICT (tenant_id) DO NOTHING",
+          [created.id, created.name],
+        );
         await recordAudit(q, {
           actorUserId: principal.userId,
           action: "tenant.created",
