@@ -80,8 +80,9 @@ export function authenticate(db: Db): RequestHandler {
 
       // Presence: record that this user was just seen. Fire-and-forget and
       // throttled (in-process + in the SQL function) so it never delays or
-      // fails the request.
-      if (shouldTouchPresence(user.id)) {
+      // fails the request. Skipped for logout, which is about to mark them
+      // signed out — racing a "seen" write against it would be wrong.
+      if (!req.path.endsWith("/logout") && shouldTouchPresence(user.id)) {
         void db
           .bypassRls((q) => q.query("SELECT touch_user_last_seen($1)", [user.id]))
           .catch(() => undefined);

@@ -66,11 +66,14 @@ function relTime(s) {
   return fmtDay(s);
 }
 
-/** Presence pill for a serialized user. Online = an authenticated request in
- *  the last 5 minutes (computed here so it stays correct between renders). */
+/** Presence pill for a serialized user. The server decides `online` (seen
+ *  recently AND not since signed out); we also re-check freshness here so a
+ *  page left open doesn't keep showing a stale "Online". */
 function presenceCell(u) {
   const seenMs = u.lastSeenAt ? Date.now() - new Date(u.lastSeenAt).getTime() : Infinity;
-  if (seenMs < 5 * 60_000) return `<span class="dot online" title="Signed in now"></span> Online`;
+  if (u.online === true && seenMs < 5 * 60_000) {
+    return `<span class="dot online" title="Signed in now"></span> Online`;
+  }
   if (!u.lastSeenAt) return `<span class="muted">Never signed in</span>`;
   return `<span class="dot offline" title="${esc(fmtDate(u.lastSeenAt))}"></span> <span class="muted">${esc(relTime(u.lastSeenAt))}</span>`;
 }

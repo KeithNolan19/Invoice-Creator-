@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { SEED_PASSWORD } from "../../src/db/seed.ts";
+import { isOnline } from "../../src/modules/users/users.repo.ts";
 import { auth, createHarness, type Harness } from "../support/harness.ts";
 
 /** Admin presence — "is this user currently signed in?" */
@@ -29,6 +30,23 @@ async function eventually<T>(fn: () => Promise<T>, pred: (v: T) => boolean, trie
   return v;
 }
 
+describe("isOnline", () => {
+  const now = Date.now();
+  const ago = (ms: number) => new Date(now - ms).toISOString();
+
+  it("is true only for a recent sighting", () => {
+    expect(isOnline(ago(30_000))).toBe(true);
+    expect(isOnline(ago(10 * 60_000))).toBe(false);
+    expect(isOnline(null)).toBe(false);
+  });
+
+  it("is false when the last sighting predates a sign-out / revocation", () => {
+    expect(isOnline(ago(60_000), ago(30_000))).toBe(false); // signed out 30s ago
+    expect(isOnline(ago(30_000), ago(60_000))).toBe(true); // seen since last sign-out
+    expect(isOnline(ago(30_000), null)).toBe(true);
+  });
+});
+
 describe("user presence", () => {
   it("a freshly seeded user has never been seen", async () => {
     const alice = (await acmeUsers()).find((u) => u.email === "alice@acme.test")!;
@@ -46,6 +64,25 @@ describe("user presence", () => {
     expect(alice.online).toBe(true);
     expect(alice.lastSeenAt).not.toBeNull();
     expect(Date.now() - new Date(alice.lastSeenAt).getTime()).toBeLessThan(60_000);
+  });
+
+  it("signing out drops the user offline immediately", async () => {
+    await h.api.get("/api/dashboard").set(...auth(h.tokens.alice));
+    let alice = await eventually(
+      async () => (await acmeUsers()).find((u) => u.email === "alice@acme.test")!,
+      (u) => u.online === true,
+    );
+    expect(alice.online).toBe(true);
+
+    await h.api.post("/api/auth/logout").set(...auth(h.tokens.alice));
+
+    alice = await eventually(
+      async () => (await acmeUsers()).find((u) => u.email === "alice@acme.test")!,
+      (u) => u.online === false,
+    );
+    expect(alice.online).toBe(false);
+    // still shows when they were last around
+    expect(alice.lastSeenAt).not.toBeNull();
   });
 
   it("login records lastLoginAt", async () => {

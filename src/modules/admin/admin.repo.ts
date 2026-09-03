@@ -23,7 +23,9 @@ export async function getDashboardStats(q: Queryable): Promise<DashboardStats> {
       (SELECT count(*) FROM users)::int                                     AS total_users,
       (SELECT count(*) FROM users WHERE disabled_at IS NULL)::int           AS active_users,
       (SELECT count(*) FROM users WHERE disabled_at IS NOT NULL)::int       AS disabled_users,
-      (SELECT count(*) FROM users WHERE last_seen_at > now() - interval '5 minutes')::int AS online_users,
+      (SELECT count(*) FROM users
+         WHERE last_seen_at > now() - interval '5 minutes'
+           AND (tokens_invalid_before IS NULL OR last_seen_at > tokens_invalid_before))::int AS online_users,
       (SELECT count(*) FROM invoices)::int                                  AS total_invoices,
       (SELECT count(*) FROM audit_logs)::int                                AS admin_actions,
       (SELECT count(*) FROM audit_logs WHERE created_at > now() - interval '7 days')::int AS admin_actions_7d

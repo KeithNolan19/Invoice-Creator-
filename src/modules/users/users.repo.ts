@@ -26,6 +26,7 @@ export interface TenantUserRow {
   created_at: string;
   last_seen_at: string | null;
   last_login_at: string | null;
+  tokens_invalid_before: string | null;
 }
 
 // The pre-auth / per-request identity lookup needs the tenant's status too, so a
@@ -50,7 +51,8 @@ export async function findAuthUserById(q: Queryable, id: string): Promise<AuthUs
 }
 
 const USER_COLUMNS =
-  "id, email, name, role, tenant_id, tenant_role, disabled_at, created_at, last_seen_at, last_login_at";
+  "id, email, name, role, tenant_id, tenant_role, disabled_at, created_at, " +
+  "last_seen_at, last_login_at, tokens_invalid_before";
 
 /**
  * Visible users, subject to whatever RLS context the caller is running in. An
@@ -184,14 +186,28 @@ export function serializeUser(row: TenantUserRow) {
     createdAt: row.created_at,
     lastSeenAt: row.last_seen_at,
     lastLoginAt: row.last_login_at,
-    online: isOnline(row.last_seen_at),
+    online: isOnline(row.last_seen_at, row.tokens_invalid_before),
   };
 }
 
-/** "Online" = an authenticated request in the last 5 minutes (tokens last 30). */
+/**
+ * "Online" = an authenticated request in the last 5 minutes (tokens last 30)
+ * AND no sign-out / revocation since then. Logout and disable both bump
+ * `tokens_invalid_before`, so a signed-out user drops offline immediately
+ * rather than lingering for the rest of the window.
+ */
 export const ONLINE_WINDOW_MS = 5 * 60_000;
-export function isOnline(lastSeenAt: string | Date | null): boolean {
-  if (!lastSeenAt) return false;
-  const t = lastSeenAt instanceof Date ? lastSeenAt.getTime() : Date.parse(lastSeenAt);
-  return Number.isFinite(t) && Date.now() - t < ONLINE_WINDOW_MS;
+function ts(v: string | Date | null): number | null {
+  if (!v) return null;
+  const t = v instanceof Date ? v.getTime() : Date.parse(v);
+  return Number.isFinite(t) ? t : null;
+}
+export function isOnline(
+  lastSeenAt: string | Date | null,
+  tokensInvalidBefore: string | Date | null = null,
+): boolean {
+  const seen = ts(lastSeenAt);
+  if (seen === null || Date.now() - seen >= ONLINE_WINDOW_MS) return false;
+  const revoked = ts(tokensInvalidBefore);
+  return revoked === null || seen > revoked;
 }
