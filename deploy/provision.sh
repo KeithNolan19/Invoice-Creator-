@@ -87,6 +87,9 @@ fi
 
 # ---------------------------------------------------------------------------
 say "Fetching the application into $APP_DIR"
+# The checkout is owned by $APP_USER; allow root's git to operate on it.
+git config --global --get-all safe.directory 2>/dev/null | grep -qxF "$APP_DIR" || \
+  git config --global --add safe.directory "$APP_DIR"
 if [ ! -d "$APP_DIR/.git" ]; then
   mkdir -p "$(dirname "$APP_DIR")"
   git clone --branch "$BRANCH" "$REPO_URL" "$APP_DIR"

@@ -20,6 +20,10 @@ HEALTH_URL=http://127.0.0.1:3000/health
 
 cd "$APP_DIR"
 
+# The checkout is owned by the app user; allow root's git to operate on it.
+git config --global --get-all safe.directory 2>/dev/null | grep -qxF "$APP_DIR" || \
+  git config --global --add safe.directory "$APP_DIR"
+
 echo "==> Fetching latest main"
 git fetch --all --prune
 git reset --hard origin/main
