@@ -74,6 +74,11 @@ a { color: inherit; }
   border: 1px solid var(--line-strong); border-radius: 6px; background: var(--paper); }
 .inline-form select { font: inherit; padding: 8px 10px; border: 1px solid var(--line-strong);
   border-radius: 6px; background: var(--paper); }
+/* Mask API secrets visually without being type=password (which triggers
+   password-manager autofill that overwrites the stored value). */
+.secret-input { -webkit-text-security: disc; }
+.secret-input:focus { -webkit-text-security: none; }
+.secret-input:placeholder-shown { -webkit-text-security: none; }
 .notice {
   border: 1px solid var(--line-strong);
   background: var(--raise);

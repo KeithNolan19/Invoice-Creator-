@@ -313,13 +313,19 @@ export function billingAdminRoutes(db: Db): Router {
     const cfg = await db.withContext(p, (q) => getBillingConfigSafe(q));
     if (!fire || !cfg.fireCollectionIcan) throw badRequest("Fire.com is not fully configured");
 
-    const created = await new FireClient(fire).createPaymentRequest({
-      amountMinor: Number(inv.amount_cents),
-      currency: (inv.currency as "EUR" | "GBP") ?? "EUR",
-      myRef: inv.number,
-      description: inv.number.slice(0, 18),
-      icanTo: Number(cfg.fireCollectionIcan),
-    });
+    let created;
+    try {
+      created = await new FireClient(fire).createPaymentRequest({
+        amountMinor: Number(inv.amount_cents),
+        currency: (inv.currency as "EUR" | "GBP") ?? "EUR",
+        myRef: inv.number,
+        description: inv.number.slice(0, 18),
+        icanTo: Number(cfg.fireCollectionIcan),
+      });
+    } catch (err) {
+      res.status(502).json({ error: { code: "fire_error", message: (err as Error).message } });
+      return;
+    }
     const updated = await db.withContext(p, async (q) => {
       const u = await setPlatformInvoiceStatus(q, id.data, "payment_pending", {
         paymentProvider: "fire",

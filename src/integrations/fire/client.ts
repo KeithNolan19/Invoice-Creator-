@@ -17,11 +17,12 @@ import {
  * until ~30s before expiry; they are never persisted. `clientKey` and access
  * tokens are never logged.
  *
- * Verified endpoints (docs.fire.com):
+ * Verified endpoints — all under /business (the docs show some paths relative
+ * to a `https://api.fire.com/business` server base; probed against the live API):
  *   auth:    POST {api}/business/v1/apps/accesstokens
- *   create:  POST {api}/v1/paymentrequests
- *   detail:  GET  {api}/v1/paymentrequests/{code}     -> { status, amount, totalAmountPaid, countTimesPaid, ... }
- *   payments:GET  {api}/v2/paymentrequests/{code}/payments
+ *   create:  POST {api}/business/v1/paymentrequests
+ *   detail:  GET  {api}/business/v1/paymentrequests/{code}  -> { status, amount, totalAmountPaid, countTimesPaid, ... }
+ *   payments:GET  {api}/business/v2/paymentrequests/{code}/payments
  */
 export class FireClient {
   private token?: { value: string; expiresAtMs: number };
@@ -110,7 +111,7 @@ export class FireClient {
   }
 
   createPaymentRequest(input: CreatePaymentRequestInput): Promise<PaymentRequestCreated> {
-    return this.authed("/v1/paymentrequests", {
+    return this.authed("/business/v1/paymentrequests", {
       method: "POST",
       body: JSON.stringify({
         type: "OTHER",
@@ -128,13 +129,13 @@ export class FireClient {
 
   /** Reconciliation poll — summary of a payment request incl. `totalAmountPaid`. */
   getPaymentRequest(code: string): Promise<FirePaymentRequestDetail> {
-    return this.authed(`/v1/paymentrequests/${encodeURIComponent(code)}`) as Promise<FirePaymentRequestDetail>;
+    return this.authed(`/business/v1/paymentrequests/${encodeURIComponent(code)}`) as Promise<FirePaymentRequestDetail>;
   }
 
   /** Reconciliation poll — individual payments against a request. */
   getPaymentRequestPayments(code: string): Promise<Record<string, unknown>> {
     return this.authed(
-      `/v2/paymentrequests/${encodeURIComponent(code)}/payments`,
+      `/business/v2/paymentrequests/${encodeURIComponent(code)}/payments`,
     ) as Promise<Record<string, unknown>>;
   }
 

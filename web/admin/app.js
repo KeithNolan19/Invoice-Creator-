@@ -438,10 +438,16 @@ async function statusAction(id, action) {
 
 async function billingConfigView() {
   const { config: c } = await api("/billing/config");
+  // Deliberately NOT type=password — browser password managers were autofilling
+  // these with the admin's saved login password and clobbering the real secret
+  // on save. type=text + these attrs keeps every major manager out; the value
+  // is only ever "leave blank to keep current" in normal use.
   const secretField = (id, label, has, hint) => `
     <div class="field">
       <label for="${id}">${esc(label)} ${has ? '<span class="pill">configured</span>' : ""}</label>
-      <input id="${id}" type="password" autocomplete="off" placeholder="${has ? "leave blank to keep current" : (hint || "")}">
+      <input id="${id}" type="text" class="secret-input" autocomplete="off"
+        data-lpignore="true" data-1p-ignore data-form-type="other" spellcheck="false"
+        placeholder="${has ? "leave blank to keep current" : (hint || "")}">
     </div>`;
 
   view.innerHTML = `
