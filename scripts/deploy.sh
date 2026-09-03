@@ -29,8 +29,17 @@ git fetch --all --prune
 git reset --hard origin/main
 echo "    now at $(git rev-parse --short HEAD) - $(git log -1 --pretty=%s)"
 
-echo "==> Installing dependencies"
-npm ci --include=dev
+# npm ci wipes and rebuilds node_modules — slow on a small box. Skip it when the
+# lockfile hasn't changed since the last successful install.
+LOCK_STAMP="$APP_DIR/node_modules/.deploy-lock-sha"
+LOCK_SHA=$(sha256sum package-lock.json | cut -d' ' -f1)
+if [ "${FORCE_NPM_CI:-0}" != "1" ] && [ -d node_modules ] && [ "$(cat "$LOCK_STAMP" 2>/dev/null)" = "$LOCK_SHA" ]; then
+  echo "==> Dependencies unchanged since last deploy — skipping npm ci"
+else
+  echo "==> Installing dependencies"
+  npm ci --include=dev
+  echo "$LOCK_SHA" > "$LOCK_STAMP"
+fi
 
 if [ "${SKIP_TYPECHECK:-0}" = "1" ]; then
   echo "==> Skipping type-check (SKIP_TYPECHECK=1)"
