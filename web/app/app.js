@@ -433,7 +433,7 @@ async function viewDashboard() {
     api("/dashboard"),
     api("/billing").catch(() => null),
   ]);
-  const subBanner = subscriptionDueBanner(billing);
+  const subBanner = subscriptionDuePanel(billing);
 
   if (d.totals.invoices === 0) {
     view.innerHTML = `
@@ -489,12 +489,31 @@ async function viewDashboard() {
     </div>`;
 }
 
-function subscriptionDueBanner(billing) {
+/** Dashboard "pay your subscription" panel — shows the pay-by-bank QR inline. */
+function subscriptionDuePanel(billing) {
   if (!billing || !(billing.amountDueCents > 0)) return "";
   const ccy = billing.subscription ? billing.subscription.currency : "EUR";
-  return `<div class="notice${billing.hasOverdue ? " danger" : ""}">
-    <strong>${fmtMoney(billing.amountDueCents, ccy)} due for your subscription${billing.hasOverdue ? " — overdue" : ""}.</strong>
-    <a href="/app/billing">Pay by bank →</a>
+  const due = (billing.invoices || []).filter(
+    (i) => i.status === "issued" || i.status === "payment_pending",
+  );
+  const payable = due.find((i) => i.hostedPaymentUrl && i.paymentQrSvg);
+  const heading = `${fmtMoney(billing.amountDueCents, ccy)} due for your subscription${
+    billing.hasOverdue ? " — overdue" : ""
+  }`;
+
+  return `<div class="notice sub-due${billing.hasOverdue ? " danger" : ""}">
+    <strong>${heading}.</strong>
+    ${payable
+      ? `<div class="pay-box">
+          <img class="pay-qr" alt="Payment QR code" src="${esc(payable.paymentQrSvg)}">
+          <div class="pay-actions">
+            <p class="muted">Scan with your banking app to pay ${esc(payable.number)}, or</p>
+            <a class="btn" href="${esc(payable.hostedPaymentUrl)}" target="_blank" rel="noopener">Open secure payment page</a>
+            <p class="muted" style="margin-top:8px">Payment is confirmed automatically once your bank completes it.
+              &nbsp;<a href="/app/billing">All billing →</a></p>
+          </div>
+        </div>`
+      : `<p style="margin-top:6px"><a href="/app/billing">Go to Billing to pay by bank →</a></p>`}
   </div>`;
 }
 
