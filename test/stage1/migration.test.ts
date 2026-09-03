@@ -17,7 +17,10 @@ describe("008_customer_journey_foundations applies", () => {
     const applied = await migrate(db);
     const names = applied.map((m) => m.name);
     expect(names).toContain("008_customer_journey_foundations.sql");
-    expect(names.indexOf("008_customer_journey_foundations.sql")).toBe(names.length - 1);
+    // 008 applies immediately after 007 (later migrations may follow).
+    expect(names.indexOf("008_customer_journey_foundations.sql")).toBe(
+      names.indexOf("007_least_privilege_roles.sql") + 1,
+    );
 
     const shape = await db.privileged(async (q) => ({
       tables: (
