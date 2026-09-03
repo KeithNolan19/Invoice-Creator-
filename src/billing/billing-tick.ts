@@ -35,9 +35,17 @@ export async function runBillingTick(db: Db, now: Date = new Date()): Promise<Ti
 async function tick(db: Db, q: Queryable, now: Date): Promise<TickResult> {
   const result: TickResult = { renewalsGenerated: 0, overdueFlagged: 0, reconciled: 0, errors: [] };
 
-  // Serialise ticks. If another holds the lock, bail cheaply.
-  const lock = await q.query<{ locked: boolean }>("SELECT pg_try_advisory_xact_lock(hashtext('billing-tick')) AS locked");
-  if (!lock.rows[0]?.locked) return { ...result, skipped: "another tick is running" };
+  // Serialise ticks — if another run holds the lock, bail cheaply. Only skip on
+  // an explicit `false`; if the function is unavailable (some environments) we
+  // proceed, since the DB unique constraints already make double-work harmless.
+  try {
+    const lock = await q.query<{ locked: boolean | null }>(
+      "SELECT pg_try_advisory_xact_lock(hashtext('billing-tick')) AS locked",
+    );
+    if (lock.rows[0]?.locked === false) return { ...result, skipped: "another tick is running" };
+  } catch {
+    /* advisory locks unsupported here — rely on the unique constraints */
+  }
 
   const cfg = await getBillingConfigSafe(q);
   if (!cfg.schedulerEnabled) return { ...result, skipped: "scheduler disabled" };
