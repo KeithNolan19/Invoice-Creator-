@@ -6,6 +6,7 @@ import {
   FireApiError,
   type FireCredentials,
   type FirePaymentRequestDetail,
+  type FirePaymentRequestPayments,
   type PaymentRequestCreated,
 } from "./types.ts";
 
@@ -127,16 +128,16 @@ export class FireClient {
     }) as Promise<PaymentRequestCreated>;
   }
 
-  /** Reconciliation poll — summary of a payment request incl. `totalAmountPaid`. */
+  /** Reconciliation poll — payment-request summary (`status: "PAID"` when done). */
   getPaymentRequest(code: string): Promise<FirePaymentRequestDetail> {
     return this.authed(`/business/v1/paymentrequests/${encodeURIComponent(code)}`) as Promise<FirePaymentRequestDetail>;
   }
 
-  /** Reconciliation poll — individual payments against a request. */
-  getPaymentRequestPayments(code: string): Promise<Record<string, unknown>> {
+  /** Reconciliation poll — the individual payments made against a request. */
+  getPaymentRequestPayments(code: string): Promise<FirePaymentRequestPayments> {
     return this.authed(
       `/business/v2/paymentrequests/${encodeURIComponent(code)}/payments`,
-    ) as Promise<Record<string, unknown>>;
+    ) as Promise<FirePaymentRequestPayments>;
   }
 
   hostedUrlFor(code: string): string {

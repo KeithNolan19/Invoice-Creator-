@@ -18,7 +18,7 @@ beforeEach(() => {
       JSON.stringify(
         isAuth
           ? { accessToken: "tok", expiry: new Date(Date.now() + 600_000).toISOString(), businessId: 1, apiApplicationId: 2, permissions: [] }
-          : { code: "abc123", type: "OTHER", status: "ACTIVE", amount: 100, totalAmountPaid: 0, countTimesPaid: 0 },
+          : { code: "abc123", type: "OTHER", status: "PAID", amount: 100, total: 0, pisPaymentRequestPayments: [] },
       ),
       { status: 200, headers: { "content-type": "application/json" } },
     );

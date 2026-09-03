@@ -1,6 +1,6 @@
 import type { Db, Queryable } from "../db/types.ts";
 import { withSystemContext } from "../db/system-context.ts";
-import { FireClient } from "../integrations/fire/index.ts";
+import { FireClient, summariseFireSettlement } from "../integrations/fire/index.ts";
 import { recordAudit } from "../modules/admin/audit.ts";
 import { getBillingConfigSafe, getFireAuthCredentials } from "../modules/billing/billing-config.repo.ts";
 import { createNotification } from "../modules/billing/notifications.repo.ts";
@@ -91,19 +91,25 @@ async function tick(db: Db, q: Queryable, now: Date): Promise<TickResult> {
   }
 
   // ---- 3. Reconciliation: poll Fire for pending payments ---------------
+  // Fire reports the request as `status: "PAID"` once fulfilled, but the amount
+  // that actually landed comes from the /payments sub-resource (each payment
+  // gets a `dateFundsReceived` when the money settles).
   if (fire) {
     for (const inv of await listPlatformInvoices(q, { status: "payment_pending" })) {
       if (!inv.fire_payment_code) continue;
       try {
         const detail = await fire.getPaymentRequest(inv.fire_payment_code);
-        const paid = Number(detail.totalAmountPaid ?? 0);
-        if (paid >= Number(inv.amount_cents) && Number(detail.countTimesPaid ?? 0) >= 1) {
+        const paidLike = String(detail.status).toUpperCase() === "PAID";
+        const settlement = summariseFireSettlement(
+          await fire.getPaymentRequestPayments(inv.fire_payment_code),
+        );
+        if (paidLike && settlement.amountReceivedMinor >= Number(inv.amount_cents)) {
           const outcome = await applyConfirmedPayment(db, {
             invoiceId: inv.id,
-            amountCents: paid,
-            currency: inv.currency,
-            providerPaymentId: inv.fire_payment_code,
-            raw: detail,
+            amountCents: settlement.amountReceivedMinor,
+            currency: settlement.currency ?? inv.currency,
+            providerPaymentId: settlement.providerPaymentId ?? inv.fire_payment_code,
+            raw: { detail, payments: settlement.payments },
             source: "reconciliation",
           });
           if (outcome === "applied") result.reconciled++;

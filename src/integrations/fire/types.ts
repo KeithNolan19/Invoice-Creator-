@@ -36,16 +36,40 @@ export interface PaymentRequestCreated {
   type: string;
 }
 
-/** GET /v1/paymentrequests/{code} — the fields we use for reconciliation. */
+/**
+ * GET /business/v1/paymentrequests/{code} — verified against the live API.
+ * A completed request reports `status: "PAID"`; there is no `totalAmountPaid`
+ * field on this endpoint, so the actual received amount comes from the
+ * `/payments` sub-resource below.
+ */
 export interface FirePaymentRequestDetail {
   code: string;
-  status: string; // ACTIVE | EXPIRED | CLOSED | ...
+  status: string; // ACTIVE | PAID | EXPIRED | CLOSED | ...
   currency: string;
-  amount: number; // minor units
-  totalAmountPaid: number; // minor units actually received
-  totalAmountAuthorised?: number;
-  countTimesPaid: number;
+  amount: number; // minor units — the amount requested
+  myRef?: string;
+  description?: string;
+  countTimesAuthorised?: number;
+  countTimesConsented?: number;
   [key: string]: unknown;
+}
+
+/** One payment made against a payment request (v2 `/payments`). */
+export interface FirePayment {
+  paymentUuid: string;
+  status: string; // SETTLED | PAID | RECEIVED | REJECTED | FAILED | ...
+  currency: { code: string; description?: string } | string;
+  amountBeforeCharges: number; // minor units
+  myRef?: string;
+  dateCreated?: string;
+  dateFundsReceived?: string; // set once the money has actually landed
+  [key: string]: unknown;
+}
+
+/** GET /business/v2/paymentrequests/{code}/payments — verified shape. */
+export interface FirePaymentRequestPayments {
+  total: number;
+  pisPaymentRequestPayments: FirePayment[];
 }
 
 /** A single decoded webhook event. Field names are provisional — confirm against
