@@ -139,6 +139,9 @@ button.link:hover { color: var(--ink); background: none; }
   background: var(--ink); color: var(--paper);
   font-size: 12px; font-weight: 600; letter-spacing: 0.02em;
 }
+/* Keep the [hidden] attribute authoritative even though these set display. */
+.account-menu[hidden], .support-panel[hidden], .support-btn[hidden] { display: none !important; }
+
 .account-menu {
   position: absolute; left: 0; bottom: calc(100% + 8px);
   min-width: 200px; background: var(--raise, #fff);
