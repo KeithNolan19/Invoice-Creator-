@@ -20,11 +20,12 @@ async function acmeUsers() {
   return res.body.users as Array<Record<string, any>>;
 }
 
-/** The presence write is fire-and-forget; give it a moment to commit. */
-async function eventually<T>(fn: () => Promise<T>, pred: (v: T) => boolean, tries = 20): Promise<T> {
+/** The presence write is fire-and-forget; give it a moment to commit. The VPS
+ *  runs PGlite through swap, so be patient (still well under the test timeout). */
+async function eventually<T>(fn: () => Promise<T>, pred: (v: T) => boolean, tries = 150): Promise<T> {
   let v = await fn();
   for (let i = 0; i < tries && !pred(v); i++) {
-    await new Promise((r) => setTimeout(r, 25));
+    await new Promise((r) => setTimeout(r, 100));
     v = await fn();
   }
   return v;
