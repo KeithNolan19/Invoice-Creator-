@@ -50,8 +50,9 @@ export interface Harness extends HarnessState {
 }
 
 const TENANT_TABLES =
-  "support_messages, support_tickets, audit_logs, invoice_line_items, invoices, " +
-  "tenant_payment_integrations, tenant_settings, customers, users, tenants";
+  "admin_notifications, platform_payment_events, platform_payments, platform_invoices, " +
+  "tenant_subscriptions, support_messages, support_tickets, audit_logs, invoice_line_items, " +
+  "invoices, tenant_payment_integrations, tenant_settings, customers, users, tenants";
 
 let cachedHash: Promise<string> | null = null;
 const seedHash = () => (cachedHash ??= hashPassword(SEED_PASSWORD));

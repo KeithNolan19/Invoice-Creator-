@@ -24,6 +24,7 @@ const configSchema = z
     invoiceNumberPrefix: z.string().trim().min(1).max(16).optional(),
     renewalReminderDays: z.number().int().min(0).max(90).optional(),
     overdueGraceDays: z.number().int().min(0).max(90).optional(),
+    yearlyDiscountPct: z.number().min(0).max(99).optional(),
     // Fire credentials — write-only. Never echoed back.
     fireClientId: z.string().trim().min(1).max(200).optional(),
     fireClientKey: z.string().trim().min(1).max(400).optional(),
@@ -58,6 +59,7 @@ export function billingAdminRoutes(db: Db): Router {
       invoiceNumberPrefix: body.invoiceNumberPrefix,
       renewalReminderDays: body.renewalReminderDays,
       overdueGraceDays: body.overdueGraceDays,
+      yearlyDiscountPct: body.yearlyDiscountPct,
     };
     const firePatch: FireCredentialsPatch = {
       clientId: body.fireClientId,

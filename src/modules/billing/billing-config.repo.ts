@@ -19,6 +19,7 @@ export interface BillingConfigSafe {
   invoiceNumberPrefix: string;
   renewalReminderDays: number;
   overdueGraceDays: number;
+  yearlyDiscountPct: number;
   fireWebhookKid: string | null;
   fireCollectionIcan: string | null;
   fireBusinessId: string | null;
@@ -43,6 +44,7 @@ interface SafeRow {
   invoice_number_prefix: string;
   renewal_reminder_days: number;
   overdue_grace_days: number;
+  yearly_discount_pct: string;
   fire_webhook_kid: string | null;
   fire_collection_ican: string | null;
   fire_business_id: string | null;
@@ -58,6 +60,7 @@ interface SafeRow {
 const SAFE_SELECT = `
   SELECT business_name, business_address, business_tax_number, business_contact_email,
          default_currency, invoice_number_prefix, renewal_reminder_days, overdue_grace_days,
+         yearly_discount_pct::text AS yearly_discount_pct,
          fire_webhook_kid, fire_collection_ican::text AS fire_collection_ican,
          fire_business_id, fire_last_verified_at, fire_last_error, updated_at,
          (fire_client_id_ciphertext      IS NOT NULL) AS has_client_id,
@@ -88,6 +91,7 @@ export async function getBillingConfigSafe(q: Queryable): Promise<BillingConfigS
     invoiceNumberPrefix: r.invoice_number_prefix,
     renewalReminderDays: r.renewal_reminder_days,
     overdueGraceDays: r.overdue_grace_days,
+    yearlyDiscountPct: Number(r.yearly_discount_pct),
     fireWebhookKid: r.fire_webhook_kid,
     fireCollectionIcan: r.fire_collection_ican,
     fireBusinessId: r.fire_business_id,
@@ -113,6 +117,7 @@ export interface BillingConfigPatch {
   invoiceNumberPrefix?: string;
   renewalReminderDays?: number;
   overdueGraceDays?: number;
+  yearlyDiscountPct?: number;
 }
 
 export async function updateBillingConfigSafe(
@@ -136,6 +141,7 @@ export async function updateBillingConfigSafe(
     invoice_number_prefix: patch.invoiceNumberPrefix,
     renewal_reminder_days: patch.renewalReminderDays,
     overdue_grace_days: patch.overdueGraceDays,
+    yearly_discount_pct: patch.yearlyDiscountPct,
   };
   for (const [col, val] of Object.entries(cols)) if (val !== undefined) add(col, val);
   if (sets.length === 0) return;
