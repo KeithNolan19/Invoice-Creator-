@@ -11,7 +11,10 @@ export type AuditAction =
   | "billing.config_updated"
   | "billing.fire_verified"
   | "billing.webhook_received"
-  | "billing.webhook_failed";
+  | "billing.webhook_failed"
+  // Support desk
+  | "support.ticket_closed"
+  | "support.ticket_reopened";
 
 export interface AuditEntry {
   /** null for system-initiated events (webhook receiver, scheduled jobs). */

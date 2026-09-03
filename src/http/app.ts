@@ -10,6 +10,8 @@ import { adminRoutes } from "../modules/admin/admin.routes.ts";
 import { authRoutes } from "../modules/auth/auth.routes.ts";
 import { billingAdminRoutes } from "../modules/billing/billing.admin.routes.ts";
 import { webhookRoutes } from "../modules/billing/webhook.routes.ts";
+import { supportAdminRoutes } from "../modules/support/support.admin.routes.ts";
+import { supportRoutes } from "../modules/support/support.routes.ts";
 import { customerRoutes } from "../modules/customers/customers.routes.ts";
 import { dashboardRoutes } from "../modules/dashboard/dashboard.routes.ts";
 import { invoiceRoutes } from "../modules/invoices/invoices.routes.ts";
@@ -62,8 +64,10 @@ export function createApp(db: Db, options: AppOptions = {}): Express {
   app.use("/api/customers", customerRoutes(db));
   app.use("/api/settings", settingsRoutes(db));
   app.use("/api/invoices", invoiceRoutes(db));
-  // More specific admin prefix first so it doesn't fall through the /api/admin router.
+  app.use("/api/support", supportRoutes(db));
+  // More specific admin prefixes first so they don't fall through the /api/admin router.
   app.use("/api/admin/billing", billingAdminRoutes(db));
+  app.use("/api/admin/support", supportAdminRoutes(db));
   app.use("/api/admin", adminRoutes(db));
 
   // Static single-page apps. Both are plain HTML/CSS/JS that call /api/* with a

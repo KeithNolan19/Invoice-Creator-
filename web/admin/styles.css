@@ -40,6 +40,36 @@ a { color: inherit; }
 .muted { color: var(--ink-soft); }
 .error { color: var(--danger); font-size: 13px; margin: 8px 0; }
 .ok-msg { color: var(--ok); font-size: 13px; margin: 8px 0; }
+
+.tabs { display: flex; gap: 2px; flex-wrap: wrap; }
+.tabs button {
+  height: 32px; padding: 0 12px; font-size: 12.5px; font-weight: 450;
+  background: transparent; color: var(--ink-soft); border: 1px solid var(--line-strong); border-radius: 6px;
+}
+.tabs button:hover { color: var(--ink); background: rgba(28,27,25,0.04); }
+.tabs button.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+.nav-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 17px; height: 17px; padding: 0 4px; margin-left: 4px;
+  border-radius: 9px; background: #b23b3b; color: #fff; font-size: 10px; font-weight: 600;
+}
+.dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #b23b3b; vertical-align: middle; }
+
+.support-thread {
+  display: flex; flex-direction: column; gap: 10px;
+  max-width: 620px; margin: 8px 0; max-height: 52vh; overflow-y: auto;
+  border: 1px solid var(--line); border-radius: 8px; padding: 14px;
+}
+.support-thread .msg { max-width: 82%; }
+.support-thread .msg-body {
+  padding: 8px 11px; border-radius: 10px; font-size: 13px; line-height: 1.45; border: 1px solid var(--line-strong);
+}
+.support-thread .msg-meta { font-size: 10px; color: var(--ink-faint); margin-top: 3px; }
+.support-thread .msg.me { align-self: flex-end; text-align: right; }
+.support-thread .msg.me .msg-body { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.support-thread .msg.them { align-self: flex-start; }
+.support-thread .msg.them .msg-body { background: var(--paper); color: var(--ink); }
 .inline-form textarea { width: 100%; min-height: 60px; font: inherit; padding: 8px 10px;
   border: 1px solid var(--line-strong); border-radius: 6px; background: var(--paper); }
 .inline-form select { font: inherit; padding: 8px 10px; border: 1px solid var(--line-strong);

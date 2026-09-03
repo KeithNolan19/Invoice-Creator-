@@ -89,10 +89,13 @@ const routes = [
   { re: /^#\/tenants$/, view: tenantsView },
   { re: /^#\/tenants\/([0-9a-f-]{36})$/, view: tenantDetailView },
   { re: /^#\/billing$/, view: billingConfigView },
+  { re: /^#\/support$/, view: supportListView },
+  { re: /^#\/support\/([0-9a-f-]{36})$/, view: supportTicketView },
   { re: /^#\/audit$/, view: auditView },
 ];
 
 function render() {
+  clearInterval(supportPollTimer);
   if (!token) {
     gate.hidden = false;
     app.hidden = true;
@@ -108,9 +111,11 @@ function render() {
     ? "tenants"
     : path.startsWith("#/billing")
       ? "billing"
-      : path.startsWith("#/audit")
-        ? "audit"
-        : "dashboard";
+      : path.startsWith("#/support")
+        ? "support"
+        : path.startsWith("#/audit")
+          ? "audit"
+          : "dashboard";
   document.querySelectorAll("[data-nav]").forEach((a) => a.classList.toggle("active", a.dataset.nav === navKey));
 
   view.innerHTML = `<p class="muted">Loading…</p>`;
@@ -464,7 +469,126 @@ async function billingConfigView() {
   });
 }
 
+/* ---------------- Support ---------------- */
+
+let supportPollTimer = null;
+
+async function refreshSupportBadge() {
+  const badge = document.getElementById("support-nav-badge");
+  if (!badge || !token) return;
+  try {
+    const s = await api("/support/summary");
+    if (s.ticketsWithUnread > 0) {
+      badge.textContent = s.ticketsWithUnread;
+      badge.hidden = false;
+    } else {
+      badge.hidden = true;
+    }
+  } catch { /* ignore */ }
+}
+
+async function supportListView() {
+  clearInterval(supportPollTimer);
+  const q = new URLSearchParams((location.hash.split("?")[1] || ""));
+  const status = q.get("status") || "open";
+  const { tickets } = await api(`/support/tickets${status === "all" ? "" : `?status=${status}`}`);
+
+  view.innerHTML = `
+    <div class="view-head"><div><h1>Support</h1><p class="lede">${tickets.length} ${status === "all" ? "" : status} ${tickets.length === 1 ? "ticket" : "tickets"}</p></div></div>
+    <div class="tabs" style="margin-bottom:16px">
+      <button data-s="open" class="${status === "open" ? "active" : ""}">Open</button>
+      <button data-s="closed" class="${status === "closed" ? "active" : ""}">Closed</button>
+      <button data-s="all" class="${status === "all" ? "active" : ""}">All</button>
+    </div>
+    <table>
+      <thead><tr><th>Tenant</th><th>Subject</th><th>Last message</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        ${tickets.map((t) => `
+          <tr class="clickable" data-id="${esc(t.id)}">
+            <td>${esc(t.tenantName || "—")}</td>
+            <td>${t.unreadForAdmin > 0 ? '<span class="dot" title="unread"></span> ' : ""}${esc(t.subject)}
+              <div class="muted" style="font-size:12px">${esc((t.lastPreview || "").slice(0, 80))}</div></td>
+            <td>${esc(fmtDate(t.lastMessageAt))}</td>
+            <td><span class="pill ${t.status === "open" ? "active" : ""}">${t.status}</span></td>
+            <td><a class="mono" href="#/support/${esc(t.id)}">Open</a></td>
+          </tr>`).join("") || `<tr><td colspan="5" class="muted">No ${status === "all" ? "" : status} tickets.</td></tr>`}
+      </tbody>
+    </table>`;
+
+  view.querySelectorAll("[data-s]").forEach((b) =>
+    b.addEventListener("click", () => { location.hash = `#/support?status=${b.dataset.s}`; }));
+  view.querySelectorAll("tr[data-id]").forEach((tr) =>
+    tr.addEventListener("click", (e) => { if (e.target.tagName !== "A") location.hash = `#/support/${tr.dataset.id}`; }));
+  supportPollTimer = setInterval(() => { if ((location.hash.split("?")[0]) === "#/support") supportListView(); }, 15000);
+  refreshSupportBadge();
+}
+
+async function supportTicketView(m) {
+  clearInterval(supportPollTimer);
+  const id = m[1];
+  const paint = async () => {
+    if ((location.hash.split("?")[0]) !== `#/support/${id}`) return;
+    let data;
+    try { data = await api(`/support/tickets/${id}`); }
+    catch (e) { view.innerHTML = `<p class="error">${esc(e.message)}</p>`; return; }
+    const { ticket, messages } = data;
+    const closed = ticket.status === "closed";
+    view.innerHTML = `
+      <a class="back" href="#/support">← Support</a>
+      <div class="view-head">
+        <div><h1>${esc(ticket.subject)}</h1>
+          <p class="lede">${esc(ticket.tenantName || "")} · ${esc(ticket.openedBy?.email || "—")} · <span class="pill ${closed ? "" : "active"}">${ticket.status}</span></p></div>
+        <div class="section-actions" style="margin-top:0">
+          ${closed
+            ? `<button id="sup-reopen">Reopen</button>`
+            : `<button id="sup-close" class="danger">Mark as closed</button>`}
+        </div>
+      </div>
+      <div class="support-thread admin" id="sup-thread">
+        ${messages.map((msg) => `
+          <div class="msg ${msg.authorKind === "admin" ? "me" : "them"}">
+            <div class="msg-body">${esc(msg.body).replace(/\n/g, "<br>")}</div>
+            <div class="msg-meta">${msg.authorKind === "admin" ? "You" : esc(msg.authorEmail || "Client")} · ${esc(fmtDate(msg.createdAt))}</div>
+          </div>`).join("")}
+      </div>
+      ${closed
+        ? `<p class="muted">This ticket is closed. Reopen it to reply.</p>`
+        : `<form id="sup-reply" class="inline-form" style="margin-top:14px">
+             <textarea id="sup-body" rows="3" maxlength="4000" placeholder="Reply to the client…" required></textarea>
+             <div class="actions"><button type="submit">Send reply</button></div>
+           </form>`}`;
+    const thread = document.getElementById("sup-thread");
+    if (thread) thread.scrollTop = thread.scrollHeight;
+
+    const closeBtn = document.getElementById("sup-close");
+    if (closeBtn) closeBtn.addEventListener("click", async () => {
+      if (!confirm("Mark this ticket as closed?")) return;
+      try { await api(`/support/tickets/${id}/close`, { method: "POST" }); paint(); }
+      catch (e) { alert(e.message); }
+    });
+    const reopenBtn = document.getElementById("sup-reopen");
+    if (reopenBtn) reopenBtn.addEventListener("click", async () => {
+      try { await api(`/support/tickets/${id}/reopen`, { method: "POST" }); paint(); }
+      catch (e) { alert(e.message); }
+    });
+    const form = document.getElementById("sup-reply");
+    if (form) form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const ta = document.getElementById("sup-body");
+      const val = ta.value.trim();
+      if (!val) return;
+      ta.disabled = true;
+      try { await api(`/support/tickets/${id}/messages`, { method: "POST", body: JSON.stringify({ body: val }) }); await paint(); }
+      catch (e2) { ta.disabled = false; alert(e2.message); }
+    });
+  };
+  await paint();
+  supportPollTimer = setInterval(paint, 6000);
+  refreshSupportBadge();
+}
+
 async function auditView() {
+  clearInterval(supportPollTimer);
   const { auditLogs } = await api("/audit-logs?limit=200");
   view.innerHTML = `
     <div class="view-head"><div><h1>Audit log</h1><p class="lede">${auditLogs.length} most recent administrative actions.</p></div></div>
@@ -484,5 +608,9 @@ async function auditView() {
 }
 
 /* ---------------- Boot ---------------- */
-if (token) loadWho();
+if (token) {
+  loadWho();
+  refreshSupportBadge();
+  setInterval(refreshSupportBadge, 20000);
+}
 render();

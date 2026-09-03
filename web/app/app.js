@@ -179,6 +179,180 @@ document.getElementById("nav").addEventListener("click", (e) => {
   }
 });
 
+/* ---------------- account menu ---------------- */
+
+function initials(name, email) {
+  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return String(email || "?").slice(0, 2).toUpperCase();
+}
+
+function fillAccount() {
+  const u = me.user;
+  document.getElementById("avatar").textContent = initials(u.name, u.email);
+  document.getElementById("acct-name").textContent = u.name || "—";
+  document.getElementById("acct-email").textContent = u.email;
+  document.getElementById("acct-role").textContent = isAdmin() ? "Tenant admin" : "Member";
+}
+
+const accountBtn = document.getElementById("account-btn");
+const accountMenu = document.getElementById("account-menu");
+function setAccountMenu(open) {
+  accountMenu.hidden = !open;
+  accountBtn.setAttribute("aria-expanded", String(open));
+}
+accountBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  setAccountMenu(accountMenu.hidden);
+});
+document.addEventListener("click", (e) => {
+  if (!accountMenu.hidden && !accountMenu.contains(e.target) && e.target !== accountBtn) setAccountMenu(false);
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { setAccountMenu(false); setSupportPanel(false); }
+});
+
+/* ---------------- support widget ---------------- */
+
+const supportBtn = document.getElementById("support-btn");
+const supportPanel = document.getElementById("support-panel");
+const supportBadge = document.getElementById("support-badge");
+let supportState = { started: false, open: false, ticketId: null, summaryTimer: null, threadTimer: null };
+
+function startSupport() {
+  supportBtn.hidden = false;
+  if (supportState.started) return;
+  supportState.started = true;
+  supportBtn.addEventListener("click", () => setSupportPanel(supportPanel.hidden));
+  refreshSupportSummary();
+  supportState.summaryTimer = setInterval(refreshSupportSummary, 20000);
+}
+
+async function refreshSupportSummary() {
+  try {
+    const s = await api("/support/summary");
+    if (s.unreadCount > 0) {
+      supportBadge.textContent = s.unreadCount > 9 ? "9+" : String(s.unreadCount);
+      supportBadge.hidden = false;
+    } else {
+      supportBadge.hidden = true;
+    }
+  } catch { /* ignore transient */ }
+}
+
+function setSupportPanel(open) {
+  supportPanel.hidden = !open;
+  supportState.open = open;
+  supportBtn.setAttribute("aria-expanded", String(open));
+  clearInterval(supportState.threadTimer);
+  if (open) {
+    renderSupportPanel();
+  }
+}
+
+async function renderSupportPanel() {
+  supportPanel.innerHTML = `<div class="support-head"><strong>Support</strong>
+    <button type="button" class="link" id="sp-close">Close</button></div>
+    <div class="support-body"><p class="loading">Loading…</p></div>`;
+  supportPanel.querySelector("#sp-close").addEventListener("click", () => setSupportPanel(false));
+  const bodyEl = supportPanel.querySelector(".support-body");
+
+  let tickets = [];
+  try {
+    tickets = (await api("/support/tickets")).tickets;
+  } catch (e) {
+    bodyEl.innerHTML = `<p class="error">${esc(e.message)}</p>`;
+    return;
+  }
+  const openTicket = tickets.find((t) => t.status === "open");
+  supportState.ticketId = openTicket ? openTicket.id : null;
+
+  if (!openTicket) {
+    bodyEl.innerHTML = `
+      <p class="muted">Start a conversation with our team.</p>
+      <form id="sp-new">
+        <label for="sp-subject">Subject</label>
+        <input id="sp-subject" maxlength="200" required placeholder="What do you need help with?">
+        <label for="sp-message">Message</label>
+        <textarea id="sp-message" maxlength="4000" required rows="3"></textarea>
+        <p class="error" id="sp-err" hidden></p>
+        <button type="submit">Send</button>
+      </form>
+      ${tickets.length ? `<p class="muted" style="margin-top:14px">Past conversations</p>
+        <ul class="support-list">${tickets.filter((t) => t.status === "closed").slice(0, 5).map((t) =>
+          `<li><button type="button" class="link" data-ticket="${esc(t.id)}">${esc(t.subject)} · closed</button></li>`).join("")}</ul>` : ""}`;
+    bodyEl.querySelector("#sp-new").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const err = bodyEl.querySelector("#sp-err");
+      err.hidden = true;
+      try {
+        const { ticket } = await api("/support/tickets", {
+          method: "POST",
+          body: JSON.stringify({
+            subject: bodyEl.querySelector("#sp-subject").value.trim(),
+            message: bodyEl.querySelector("#sp-message").value.trim(),
+          }),
+        });
+        supportState.ticketId = ticket.id;
+        openThread(ticket.id);
+      } catch (e2) { err.textContent = e2.message; err.hidden = false; }
+    });
+    bodyEl.querySelectorAll("[data-ticket]").forEach((b) =>
+      b.addEventListener("click", () => openThread(b.dataset.ticket, true)));
+    return;
+  }
+
+  openThread(openTicket.id);
+}
+
+async function openThread(ticketId, readOnly = false) {
+  supportState.ticketId = ticketId;
+  const bodyEl = supportPanel.querySelector(".support-body");
+  const paint = async () => {
+    let data;
+    try { data = await api(`/support/tickets/${ticketId}`); }
+    catch (e) { bodyEl.innerHTML = `<p class="error">${esc(e.message)}</p>`; return; }
+    const closed = data.ticket.status === "closed";
+    bodyEl.innerHTML = `
+      <p class="support-subject">${esc(data.ticket.subject)}${closed ? ' <span class="pill">closed</span>' : ""}</p>
+      <div class="support-thread" id="sp-thread">
+        ${data.messages.map((m) => `
+          <div class="msg ${m.authorKind === "admin" ? "them" : "me"}">
+            <div class="msg-body">${esc(m.body).replace(/\n/g, "<br>")}</div>
+            <div class="msg-meta">${m.authorKind === "admin" ? "Support" : "You"} · ${fmtDateTime(m.createdAt)}</div>
+          </div>`).join("")}
+      </div>
+      ${closed || readOnly
+        ? `<p class="muted">${closed ? "This conversation is closed." : ""} <button type="button" class="link" id="sp-back">← Back</button></p>`
+        : `<form id="sp-reply"><textarea id="sp-rbody" rows="2" maxlength="4000" placeholder="Type a message…" required></textarea>
+           <button type="submit">Send</button></form>`}`;
+    const thread = bodyEl.querySelector("#sp-thread");
+    if (thread) thread.scrollTop = thread.scrollHeight;
+    const back = bodyEl.querySelector("#sp-back");
+    if (back) back.addEventListener("click", () => renderSupportPanel());
+    const form = bodyEl.querySelector("#sp-reply");
+    if (form) form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const ta = bodyEl.querySelector("#sp-rbody");
+      const val = ta.value.trim();
+      if (!val) return;
+      ta.disabled = true;
+      try {
+        await api(`/support/tickets/${ticketId}/messages`, { method: "POST", body: JSON.stringify({ body: val }) });
+        await paint();
+      } catch (e2) {
+        ta.disabled = false;
+        bodyEl.insertAdjacentHTML("beforeend", `<p class="error">${esc(e2.message)}</p>`);
+      }
+    });
+  };
+  await paint();
+  clearInterval(supportState.threadTimer);
+  if (!readOnly) supportState.threadTimer = setInterval(() => { if (supportState.open) paint(); }, 6000);
+  refreshSupportSummary();
+}
+
 /* ---------------- router ---------------- */
 
 const routes = [
@@ -218,8 +392,8 @@ async function render() {
   }
 
   app.hidden = false;
-  document.getElementById("who").textContent = me.user.email;
-  document.getElementById("role").textContent = isAdmin() ? "Tenant admin" : "Member";
+  fillAccount();
+  startSupport();
 
   const path = currentPath();
   if (path === "/" || path === "") return navigate("/dashboard", { replace: true });
