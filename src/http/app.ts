@@ -1,3 +1,4 @@
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express, { type Express } from "express";
 import "./principal.ts";
@@ -61,6 +62,15 @@ export function createApp(db: Db, options: AppOptions = {}): Express {
   // their own; the server enforces auth + RLS on every call.
   app.use("/admin", express.static(adminUiDir, { extensions: ["html"] }));
   app.use("/app", express.static(appUiDir, { extensions: ["html"] }));
+
+  // The customer app routes on real paths (e.g. /app/invoices/<id>). Any GET
+  // under /app that didn't resolve to a real file above gets the SPA shell so
+  // client-side routing can take over; anything that looks like a missing asset
+  // (has a file extension) falls through to 404.
+  app.use("/app", (req, res, next) => {
+    if (req.method !== "GET" || path.extname(req.path)) return next();
+    res.sendFile(path.join(appUiDir, "index.html"));
+  });
 
   app.use((_req, _res, next) => next(notFound("Route not found")));
   app.use(errorHandler);

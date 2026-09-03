@@ -7,32 +7,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=Inter:wght@400;450;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="/app/styles.css">
 </head>
 <body>
-  <!-- Sign-in gate -->
-  <section id="gate" class="gate" hidden>
-    <form id="login-form" class="gate-card">
-      <p class="wordmark"><b>Invoice Creator</b></p>
-      <h1>Sign in</h1>
-      <p class="lede">Enter the email and password you were given.</p>
-      <div class="field">
-        <label for="email">Email</label>
-        <input id="email" type="email" autocomplete="username" required>
-      </div>
-      <div class="field">
-        <label for="password">Password</label>
-        <input id="password" type="password" autocomplete="current-password" required>
-      </div>
-      <p id="login-error" class="error" hidden></p>
-      <button type="submit">Sign in</button>
-      <p class="field hint" style="margin-top:16px">
-        Accounts are provided by your platform administrator. There is no public sign-up.
-      </p>
-    </form>
-  </section>
-
-  <!-- Application shell -->
   <div id="app" class="shell" hidden>
     <header class="topbar">
       <p class="wordmark"><b>Invoice Creator</b></p>
@@ -42,10 +19,10 @@
     <aside class="sidebar" id="sidebar">
       <p class="wordmark"><b>Invoice Creator</b></p>
       <nav id="nav">
-        <a href="#/" data-nav="dashboard">Dashboard</a>
-        <a href="#/invoices" data-nav="invoices">Invoices</a>
-        <a href="#/customers" data-nav="customers">Customers</a>
-        <a href="#/settings" data-nav="settings">Settings</a>
+        <a href="/app/dashboard" data-nav="dashboard">Dashboard</a>
+        <a href="/app/invoices" data-nav="invoices">Invoices</a>
+        <a href="/app/customers" data-nav="customers">Customers</a>
+        <a href="/app/settings/business" data-nav="settings">Settings</a>
       </nav>
       <div class="sidebar-foot">
         <span class="who" id="who"></span>
@@ -57,6 +34,6 @@
     <main id="view" class="view" aria-live="polite"></main>
   </div>
 
-  <script src="app.js"></script>
+  <script src="/app/app.js"></script>
 </body>
 </html>

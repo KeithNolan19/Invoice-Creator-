@@ -28,22 +28,38 @@ describe("the customer SPA is served statically", () => {
     const css = await h.api.get("/app/styles.css");
     expect(css.status).toBe(200);
 
-    for (const f of ["web/app/index.html", "web/app/app.js", "web/app/styles.css"]) {
+    const login = await h.api.get("/app/login");
+    expect(login.status).toBe(200);
+    expect(login.text).toContain('id="login-form"');
+
+    for (const f of ["web/app/index.html", "web/app/app.js", "web/app/styles.css", "web/app/login.html", "web/app/login.js"]) {
       const text = readFileSync(repoRoot + f, "utf8");
       expect(text).not.toMatch(/postgres(?:ql)?:\/\/|DATABASE_URL|JWT_SECRET|password_hash|_ciphertext|BYPASSRLS/i);
     }
   });
 
+  it("deep links under /app serve the SPA shell; missing assets 404", async () => {
+    for (const p of ["/app", "/app/", "/app/dashboard", "/app/customers", `/app/invoices/${crypto.randomUUID()}`]) {
+      const res = await h.api.get(p);
+      expect(res.status, p).toBe(200);
+      expect(res.text, p).toContain('data-nav="dashboard"');
+    }
+    // login is its own page, not the shell
+    expect((await h.api.get("/app/login")).text).not.toContain('data-nav="dashboard"');
+    // a missing asset is a 404, not the shell
+    expect((await h.api.get("/app/nope.js")).status).toBe(404);
+  });
+
   it("the customer app is separate from the existing sign-in mockup", () => {
-    // The standalone sign-in mockup keeps its restrained design and its own file;
-    // the customer app has its own working gate at /app.
+    // The standalone sign-in mockup keeps its restrained design and its own file.
     const mockup = readFileSync(repoRoot + "test-version-1.html", "utf8");
     expect(mockup).toContain("<h1>Sign in</h1>");
     expect(mockup).toMatch(/Newsreader/);
     expect(mockup).not.toContain('id="login-form"'); // the mockup does not post anywhere
 
-    const appShell = readFileSync(repoRoot + "web/app/index.html", "utf8");
-    expect(appShell).toContain('id="login-form"');
+    // The working sign-in form lives on its own page; the shell has no gate.
+    expect(readFileSync(repoRoot + "web/app/login.html", "utf8")).toContain('id="login-form"');
+    expect(readFileSync(repoRoot + "web/app/index.html", "utf8")).not.toContain('id="login-form"');
   });
 });
 

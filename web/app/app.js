@@ -3,27 +3,53 @@
 /* Invoice Creator — customer application (vanilla JS SPA).
    Talks to /api/* with a bearer token. Holds no privileges of its own — the
    server enforces authentication, tenant RLS and tenant-admin checks on every
-   call. UI hiding of admin controls is convenience only, not a security boundary. */
+   call. UI hiding of admin controls is convenience only, not a security boundary.
 
+   Routing uses real paths under /app (History API), e.g. /app/invoices/<id>.
+   The server serves this shell for any /app/* path so deep links work. */
+
+const BASE = "/app";
+const LOGIN_URL = "/app/login";
 const TOKEN_KEY = "ic_app_token";
-const gate = document.getElementById("gate");
+
 const app = document.getElementById("app");
 const view = document.getElementById("view");
 const sidebar = document.getElementById("sidebar");
 
-let token = readToken();
 let me = null; // { user: { id, email, name, role, tenantId, tenantRole } }
 
+/* ---------------- token ---------------- */
+
+// Private-mode fallback: login.js may hand the token over in the URL fragment.
+let memoryToken = null;
+(function adoptFragmentToken() {
+  const m = /(?:^|#|&)t=([^&]+)/.exec(location.hash || "");
+  if (!m) return;
+  memoryToken = decodeURIComponent(m[1]);
+  try { localStorage.setItem(TOKEN_KEY, memoryToken); } catch { /* stays in memory */ }
+  history.replaceState({}, "", location.pathname + location.search);
+})();
+
 function readToken() {
-  try { return localStorage.getItem(TOKEN_KEY); } catch { return null; }
+  try {
+    const v = localStorage.getItem(TOKEN_KEY);
+    if (v) return v;
+  } catch { /* private mode */ }
+  return memoryToken;
 }
 function setToken(next) {
-  token = next;
+  memoryToken = next;
   try {
     if (next) localStorage.setItem(TOKEN_KEY, next);
     else localStorage.removeItem(TOKEN_KEY);
-  } catch { /* private mode — session only */ }
+  } catch { /* private mode — memory only */ }
 }
+function toLogin() {
+  const next = encodeURIComponent(location.pathname + location.search);
+  location.replace(`${LOGIN_URL}?next=${next}`);
+}
+
+let token = readToken();
 
 /* ---------------- helpers ---------------- */
 
@@ -75,7 +101,7 @@ async function api(path, options = {}) {
   if (res.status === 401) {
     setToken(null);
     me = null;
-    render();
+    toLogin();
     throw new ApiError(401, "Your session has ended. Please sign in again.");
   }
   const body = res.status === 204 ? {} : await res.json().catch(() => ({}));
@@ -99,48 +125,45 @@ const qs = (obj) => {
   const s = p.toString();
   return s ? `?${s}` : "";
 };
-const hashQuery = () => new URLSearchParams((location.hash.split("?")[1] || ""));
+const query = () => new URLSearchParams(location.search);
 const isAdmin = () => me?.user?.tenantRole === "admin";
 
-/* ---------------- login ---------------- */
+/* ---------------- navigation ---------------- */
 
-document.getElementById("login-form").addEventListener("submit", async (e) => {
+/** Path within the app, e.g. "/invoices/<id>" (no /app prefix, no query). */
+function currentPath() {
+  let p = location.pathname;
+  if (p.startsWith(BASE)) p = p.slice(BASE.length);
+  return p || "/";
+}
+
+/** Go to an in-app location. Accepts "/invoices" or "/app/invoices" (+ ?query). */
+function navigate(to, { replace = false } = {}) {
+  const url = to.startsWith(BASE) ? to : BASE + to;
+  history[replace ? "replaceState" : "pushState"]({}, "", url);
+  render();
+}
+
+// Intercept clicks on in-app links so they route without a full reload.
+document.addEventListener("click", (e) => {
+  if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  const a = e.target.closest("a");
+  if (!a) return;
+  const href = a.getAttribute("href");
+  if (!href || a.target === "_blank" || a.hasAttribute("download")) return;
+  // Route only the customer app's own paths; let /admin, mailto:, etc. through.
+  if (href !== BASE && !href.startsWith(BASE + "/")) return;
   e.preventDefault();
-  const errEl = document.getElementById("login-error");
-  errEl.hidden = true;
-  const submit = e.target.querySelector("button[type=submit]");
-  submit.disabled = true;
-  const email = document.getElementById("email").value.trim();
-  const password = document.getElementById("password").value;
-  try {
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body?.error?.message || "Sign in failed. Check your email and password.");
-    if (body.user?.role !== "user") {
-      throw new Error("This account is not a tenant user. Platform administrators use the Admin Control Centre.");
-    }
-    setToken(body.token);
-    me = { user: body.user };
-    location.hash = "#/";
-    render();
-  } catch (err) {
-    errEl.textContent = err.message;
-    errEl.hidden = false;
-  } finally {
-    submit.disabled = false;
-  }
+  navigate(href);
 });
+
+window.addEventListener("popstate", render);
 
 document.getElementById("signout").addEventListener("click", async () => {
   try { await api("/auth/logout", { method: "POST" }); } catch { /* best effort */ }
   setToken(null);
   me = null;
-  location.hash = "#/";
-  render();
+  location.assign(LOGIN_URL);
 });
 
 /* mobile nav */
@@ -159,53 +182,58 @@ document.getElementById("nav").addEventListener("click", (e) => {
 /* ---------------- router ---------------- */
 
 const routes = [
-  { re: /^#\/$/, view: viewDashboard, nav: "dashboard" },
-  { re: /^#\/invoices$/, view: viewInvoices, nav: "invoices" },
-  { re: /^#\/invoices\/new$/, view: viewInvoiceNew, nav: "invoices" },
-  { re: /^#\/invoices\/([0-9a-f-]{36})$/, view: viewInvoiceDetail, nav: "invoices" },
-  { re: /^#\/customers$/, view: viewCustomers, nav: "customers" },
-  { re: /^#\/customers\/new$/, view: viewCustomerForm, nav: "customers" },
-  { re: /^#\/customers\/([0-9a-f-]{36})$/, view: viewCustomerDetail, nav: "customers" },
-  { re: /^#\/customers\/([0-9a-f-]{36})\/edit$/, view: viewCustomerForm, nav: "customers" },
-  { re: /^#\/settings$/, view: () => { location.replace("#/settings/business"); }, nav: "settings" },
-  { re: /^#\/settings\/business$/, view: viewSettingsBusiness, nav: "settings" },
-  { re: /^#\/settings\/payments$/, view: viewSettingsPayments, nav: "settings" },
-  { re: /^#\/settings\/team$/, view: viewSettingsTeam, nav: "settings" },
+  { re: /^\/dashboard$/, view: viewDashboard, nav: "dashboard" },
+  { re: /^\/invoices$/, view: viewInvoices, nav: "invoices" },
+  { re: /^\/invoices\/new$/, view: viewInvoiceNew, nav: "invoices" },
+  { re: /^\/invoices\/([0-9a-f-]{36})$/, view: viewInvoiceDetail, nav: "invoices" },
+  { re: /^\/customers$/, view: viewCustomers, nav: "customers" },
+  { re: /^\/customers\/new$/, view: viewCustomerForm, nav: "customers" },
+  { re: /^\/customers\/([0-9a-f-]{36})$/, view: viewCustomerDetail, nav: "customers" },
+  { re: /^\/customers\/([0-9a-f-]{36})\/edit$/, view: viewCustomerForm, nav: "customers" },
+  { re: /^\/settings\/business$/, view: viewSettingsBusiness, nav: "settings" },
+  { re: /^\/settings\/payments$/, view: viewSettingsPayments, nav: "settings" },
+  { re: /^\/settings\/team$/, view: viewSettingsTeam, nav: "settings" },
 ];
 
 async function render() {
-  if (!token) {
-    gate.hidden = false;
-    app.hidden = true;
-    return;
-  }
+  token = readToken();
+  if (!token) return toLogin();
+
   if (!me) {
     try {
       me = await api("/auth/me");
     } catch {
       setToken(null);
-      gate.hidden = false;
-      app.hidden = true;
-      return;
+      return toLogin();
     }
   }
+
   if (me.user.role !== "user") {
-    gate.hidden = true;
     app.hidden = false;
     view.innerHTML = `<div class="firstrun"><h2>Wrong application</h2>
-      <p>This is the customer application. Platform administrators should use the Admin Control Centre.</p>
-      <button class="ghost" onclick="location.href='/admin'">Go to Admin</button></div>`;
+      <p>This is the customer application. Platform administrators use the Admin Control Centre.</p>
+      <a class="btn ghost" href="/admin/">Go to the Admin Control Centre</a></div>`;
     return;
   }
 
-  gate.hidden = true;
   app.hidden = false;
   document.getElementById("who").textContent = me.user.email;
   document.getElementById("role").textContent = isAdmin() ? "Tenant admin" : "Member";
 
-  const path = (location.hash || "#/").split("?")[0];
+  const path = currentPath();
+  if (path === "/" || path === "") return navigate("/dashboard", { replace: true });
+  if (path === "/settings") return navigate("/settings/business", { replace: true });
+  if (path === "/login") return navigate("/dashboard", { replace: true });
+
   const match = routes.map((r) => [r, r.re.exec(path)]).find(([, m]) => m);
-  const [route, m] = match || [routes[0], ["#/"]];
+  if (!match) {
+    document.querySelectorAll("[data-nav]").forEach((a) => a.classList.remove("active"));
+    view.innerHTML = `<div class="firstrun"><h2>Page not found</h2>
+      <p>That address doesn’t match anything in the app.</p>
+      <a class="btn" href="/app/dashboard">Go to dashboard</a></div>`;
+    return;
+  }
+  const [route, m] = match;
 
   document.querySelectorAll("[data-nav]").forEach((a) =>
     a.classList.toggle("active", a.dataset.nav === route.nav));
@@ -214,13 +242,13 @@ async function render() {
   try {
     await route.view(m);
   } catch (err) {
+    const btn = `<button class="ghost" id="err-reload">Reload</button>`;
     view.innerHTML = `<div class="view-head"><h1>Something went wrong</h1></div>
-      <p class="error">${esc(err.message || "Unexpected error.")}</p>
-      <button class="ghost" onclick="location.reload()">Reload</button>`;
+      <p class="error">${esc(err.message || "Unexpected error.")}</p>${btn}`;
+    const r = document.getElementById("err-reload");
+    if (r) r.addEventListener("click", () => location.reload());
   }
 }
-
-window.addEventListener("hashchange", render);
 
 /* ---------------- Dashboard ---------------- */
 
@@ -233,7 +261,7 @@ async function viewDashboard() {
       <div class="firstrun">
         <h2>Create your first invoice</h2>
         <p>Add a customer, enter the details, and send a professional invoice.</p>
-        <a class="btn" href="#/invoices/new">Create invoice</a>
+        <a class="btn" href="/app/invoices/new">Create invoice</a>
       </div>
       ${fireNudge(d)}`;
     return;
@@ -242,25 +270,25 @@ async function viewDashboard() {
   view.innerHTML = `
     <div class="view-head">
       <div><h1>Dashboard</h1><p class="lede">What needs your attention.</p></div>
-      <a class="btn" href="#/invoices/new">Create invoice</a>
+      <a class="btn" href="/app/invoices/new">Create invoice</a>
     </div>
 
     ${fireNudge(d)}
 
     <div class="summary">
-      <a class="cell${d.outstanding.count ? " attn" : ""}" href="#/invoices?filter=unpaid">
+      <a class="cell${d.outstanding.count ? " attn" : ""}" href="/app/invoices?filter=unpaid">
         <div class="n">${fmtMoney(d.outstanding.totalCents, "EUR")} <span class="sub">· ${d.outstanding.count}</span></div>
         <div class="k">Outstanding</div>
       </a>
-      <a class="cell${d.overdue.count ? " attn" : ""}" href="#/invoices?filter=unpaid">
+      <a class="cell${d.overdue.count ? " attn" : ""}" href="/app/invoices?filter=unpaid">
         <div class="n">${d.overdue.count}</div>
         <div class="k">Overdue</div>
       </a>
-      <a class="cell" href="#/invoices?filter=pending">
+      <a class="cell" href="/app/invoices?filter=pending">
         <div class="n">${d.pending.count}</div>
         <div class="k">Pending payment</div>
       </a>
-      <a class="cell" href="#/invoices?filter=paid">
+      <a class="cell" href="/app/invoices?filter=paid">
         <div class="n">${fmtMoney(d.paidLast30Days.totalCents, "EUR")}</div>
         <div class="k">Paid · last 30 days</div>
       </a>
@@ -284,7 +312,7 @@ function fireNudge(d) {
   if (!d.paymentIntegration.manageable) return "";
   return `<div class="notice">
     <strong>Payments are not set up.</strong> Connecting Fire.com Open Banking lets your
-    invoices carry a pay-by-bank QR code. <a href="#/settings/payments">Set up payments →</a>
+    invoices carry a pay-by-bank QR code. <a href="/app/settings/payments">Set up payments →</a>
   </div>`;
 }
 
@@ -294,7 +322,7 @@ function invoiceMiniTable(rows, emptyMsg) {
     <thead><tr><th>Number</th><th>Customer</th><th>Date</th><th class="num">Amount</th><th>Payment</th></tr></thead>
     <tbody>
       ${rows.map((i) => `
-        <tr class="clickable" data-href="#/invoices/${esc(i.id)}">
+        <tr class="clickable" data-href="/app/invoices/${esc(i.id)}">
           <td class="mono">${esc(i.number)}</td>
           <td>${esc(i.customerName)}</td>
           <td>${esc(fmtDay(i.paymentStatus === "paid" ? i.paidAt : i.issuedOn))}</td>
@@ -311,7 +339,7 @@ const FILTERS = [
 ];
 
 async function viewInvoices() {
-  const q = hashQuery();
+  const q = query();
   const filter = q.get("filter") || "all";
   const search = q.get("search") || "";
 
@@ -325,7 +353,7 @@ async function viewInvoices() {
   view.innerHTML = `
     <div class="view-head">
       <div><h1>Invoices</h1><p class="lede">${invoices.length} shown</p></div>
-      <a class="btn" href="#/invoices/new">Create invoice</a>
+      <a class="btn" href="/app/invoices/new">Create invoice</a>
     </div>
 
     <div class="toolbar">
@@ -343,7 +371,7 @@ async function viewInvoices() {
       </tr></thead>
       <tbody>
         ${invoices.map((i) => `
-          <tr class="clickable" data-href="#/invoices/${esc(i.id)}">
+          <tr class="clickable" data-href="/app/invoices/${esc(i.id)}">
             <td class="mono">${esc(i.number)}</td>
             <td>${esc(i.customerName)}</td>
             <td>${esc(fmtDay(i.issuedOn))}</td>
@@ -351,48 +379,47 @@ async function viewInvoices() {
             <td class="num">${fmtMoney(i.totalCents, i.currency)}</td>
             <td>${invoiceStatusLabel(i)}</td>
             <td>${paymentStatusLabel(i)}</td>
-            <td class="num"><span class="rowactions"><a class="mono" href="#/invoices/${esc(i.id)}">View</a></span></td>
+            <td class="num"><span class="rowactions"><a class="mono" href="/app/invoices/${esc(i.id)}">View</a></span></td>
           </tr>`).join("")}
       </tbody></table></div>`
       : emptyState(
           filter === "all" ? "No invoices yet" : `No ${esc(filter)} invoices`,
           filter === "all" ? "Create your first invoice to get started." : "Try a different filter.",
-          filter === "all" ? { href: "#/invoices/new", label: "Create invoice" } : null,
+          filter === "all" ? { href: "/app/invoices/new", label: "Create invoice" } : null,
         )}`;
 
   view.querySelectorAll("[data-filter]").forEach((b) =>
     b.addEventListener("click", () => {
-      location.hash = `#/invoices${qs({ filter: b.dataset.filter === "all" ? "" : b.dataset.filter, search })}`;
+      navigate(`/invoices${qs({ filter: b.dataset.filter === "all" ? "" : b.dataset.filter, search })}`);
     }));
   const s = document.getElementById("inv-search");
   s.addEventListener("change", () => {
-    location.hash = `#/invoices${qs({ filter: filter === "all" ? "" : filter, search: s.value.trim() })}`;
+    navigate(`/invoices${qs({ filter: filter === "all" ? "" : filter, search: s.value.trim() })}`);
   });
   wireRowLinks();
 }
 
 async function viewInvoiceNew() {
-  const q = hashQuery();
-  const customerId = q.get("customer");
+  const customerId = query().get("customer");
   let customerName = "";
   if (customerId) {
     try { customerName = (await api(`/customers/${customerId}`)).customer.name; } catch { /* ignore */ }
   }
   view.innerHTML = `
-    <a class="back" href="#/invoices">← Invoices</a>
+    <a class="back" href="/app/invoices">← Invoices</a>
     <div class="view-head"><div><h1>New invoice</h1></div></div>
     <div class="firstrun" style="margin:20px 0">
       <h2>The invoice builder is coming next</h2>
       <p>The full invoice creation workflow — customer, line items, totals, tax and the
       Fire.com payment QR — arrives in the next stage.${customerName ? ` This invoice will be for <strong>${esc(customerName)}</strong>.` : ""}</p>
-      <a class="btn ghost" href="#/invoices">Back to invoices</a>
+      <a class="btn ghost" href="/app/invoices">Back to invoices</a>
     </div>`;
 }
 
 async function viewInvoiceDetail(m) {
   const { invoice } = await api(`/invoices/${m[1]}`);
   view.innerHTML = `
-    <a class="back" href="#/invoices">← Invoices</a>
+    <a class="back" href="/app/invoices">← Invoices</a>
     <div class="view-head">
       <div><h1>${esc(invoice.number)}</h1>
       <p class="lede">${invoiceStatusLabel(invoice)} &nbsp; ${paymentStatusLabel(invoice)}</p></div>
@@ -415,13 +442,13 @@ async function viewInvoiceDetail(m) {
 /* ---------------- Customers ---------------- */
 
 async function viewCustomers() {
-  const search = hashQuery().get("search") || "";
+  const search = query().get("search") || "";
   const { customers } = await api(`/customers${qs({ search })}`);
 
   view.innerHTML = `
     <div class="view-head">
       <div><h1>Customers</h1><p class="lede">${customers.length} ${customers.length === 1 ? "customer" : "customers"}</p></div>
-      <a class="btn" href="#/customers/new">Add customer</a>
+      <a class="btn" href="/app/customers/new">Add customer</a>
     </div>
     <div class="toolbar">
       <input type="search" id="cust-search" placeholder="Search name or email" value="${esc(search)}">
@@ -430,22 +457,22 @@ async function viewCustomers() {
       <thead><tr><th>Name</th><th>Email</th><th>Location</th><th class="num">Invoices</th><th></th></tr></thead>
       <tbody>
         ${customers.map((c) => `
-          <tr class="clickable" data-href="#/customers/${esc(c.id)}">
+          <tr class="clickable" data-href="/app/customers/${esc(c.id)}">
             <td>${esc(c.name)} ${c.archived ? `<span class="pill archived">archived</span>` : ""}</td>
             <td>${esc(c.email || "—")}</td>
             <td>${esc([c.address.city, c.address.country].filter(Boolean).join(", ") || "—")}</td>
             <td class="num">${c.invoiceCount}</td>
-            <td class="num"><span class="rowactions"><a class="mono" href="#/customers/${esc(c.id)}">Open</a></span></td>
+            <td class="num"><span class="rowactions"><a class="mono" href="/app/customers/${esc(c.id)}">Open</a></span></td>
           </tr>`).join("")}
       </tbody></table></div>`
       : emptyState(
           search ? "No customers match" : "No customers yet",
           search ? "Try a different search." : "Add a customer before creating an invoice.",
-          search ? null : { href: "#/customers/new", label: "Add customer" },
+          search ? null : { href: "/app/customers/new", label: "Add customer" },
         )}`;
 
   const s = document.getElementById("cust-search");
-  s.addEventListener("change", () => { location.hash = `#/customers${qs({ search: s.value.trim() })}`; });
+  s.addEventListener("change", () => { navigate(`/customers${qs({ search: s.value.trim() })}`); });
   wireRowLinks();
 }
 
@@ -455,9 +482,10 @@ async function viewCustomerForm(m) {
   let c = null;
   if (editing) c = (await api(`/customers/${id}`)).customer;
 
+  const backHref = editing ? `/app/customers/${id}` : "/app/customers";
   const val = (k) => esc((editing ? deep(c, k) : "") ?? "");
   view.innerHTML = `
-    <a class="back" href="${editing ? `#/customers/${id}` : "#/customers"}">← Back</a>
+    <a class="back" href="${backHref}">← Back</a>
     <div class="view-head"><div><h1>${editing ? "Edit customer" : "New customer"}</h1></div></div>
     <form class="form-card" id="cust-form">
       <div class="field">
@@ -485,7 +513,7 @@ async function viewCustomerForm(m) {
       <p class="error" id="c-error" hidden></p>
       <div class="form-actions">
         <button type="submit" id="c-submit">${editing ? "Save changes" : "Create customer"}</button>
-        <a class="btn ghost" href="${editing ? `#/customers/${id}` : "#/customers"}">Cancel</a>
+        <a class="btn ghost" href="${backHref}">Cancel</a>
       </div>
     </form>`;
 
@@ -514,10 +542,10 @@ async function viewCustomerForm(m) {
     try {
       if (editing) {
         await api(`/customers/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
-        location.hash = `#/customers/${id}`;
+        navigate(`/customers/${id}`);
       } else {
         const { customer } = await api("/customers", { method: "POST", body: JSON.stringify(payload) });
-        location.hash = `#/customers/${customer.id}`;
+        navigate(`/customers/${customer.id}`);
       }
     } catch (e2) {
       err.textContent = e2.message;
@@ -534,13 +562,13 @@ async function viewCustomerDetail(m) {
     customer.address.region, customer.address.postalCode, customer.address.country].filter(Boolean).join(", ");
 
   view.innerHTML = `
-    <a class="back" href="#/customers">← Customers</a>
+    <a class="back" href="/app/customers">← Customers</a>
     <div class="view-head">
       <div><h1>${esc(customer.name)}</h1>
         ${customer.archived ? `<p class="lede"><span class="pill archived">Archived</span></p>` : ""}</div>
       <div class="section-actions" style="margin-top:0">
-        <a class="btn" href="#/invoices/new?customer=${esc(id)}">Create invoice</a>
-        <a class="btn ghost" href="#/customers/${esc(id)}/edit">Edit</a>
+        <a class="btn" href="/app/invoices/new?customer=${esc(id)}">Create invoice</a>
+        <a class="btn ghost" href="/app/customers/${esc(id)}/edit">Edit</a>
         ${customer.archived ? "" : `<button class="danger" id="c-archive">Archive</button>`}
       </div>
     </div>
@@ -583,10 +611,10 @@ async function viewCustomerDetail(m) {
 /* ---------------- Settings ---------------- */
 
 function settingsNav(active) {
-  const items = [["business", "Business", "#/settings/business"]];
+  const items = [["business", "Business", "/app/settings/business"]];
   if (isAdmin()) {
-    items.push(["payments", "Payments", "#/settings/payments"]);
-    items.push(["team", "Team", "#/settings/team"]);
+    items.push(["payments", "Payments", "/app/settings/payments"]);
+    items.push(["team", "Team", "/app/settings/team"]);
   }
   return `<nav class="settings-nav">
     ${items.map(([k, label, href]) =>
@@ -762,7 +790,7 @@ function wireRowLinks() {
   view.querySelectorAll("tr[data-href]").forEach((tr) =>
     tr.addEventListener("click", (e) => {
       if (e.target.tagName === "A") return;
-      location.hash = tr.dataset.href;
+      navigate(tr.dataset.href);
     }));
 }
 
