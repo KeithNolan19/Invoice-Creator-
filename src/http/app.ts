@@ -9,6 +9,7 @@ import { LoginRateLimiter } from "./rate-limit.ts";
 import { adminRoutes } from "../modules/admin/admin.routes.ts";
 import { authRoutes } from "../modules/auth/auth.routes.ts";
 import { billingAdminRoutes } from "../modules/billing/billing.admin.routes.ts";
+import { billingClientRoutes } from "../modules/billing/billing.client.routes.ts";
 import { notificationsAdminRoutes } from "../modules/billing/notifications.admin.routes.ts";
 import { webhookRoutes } from "../modules/billing/webhook.routes.ts";
 import { supportAdminRoutes } from "../modules/support/support.admin.routes.ts";
@@ -66,6 +67,7 @@ export function createApp(db: Db, options: AppOptions = {}): Express {
   app.use("/api/settings", settingsRoutes(db));
   app.use("/api/invoices", invoiceRoutes(db));
   app.use("/api/support", supportRoutes(db));
+  app.use("/api/billing", billingClientRoutes(db));
   // More specific admin prefixes first so they don't fall through the /api/admin router.
   app.use("/api/admin/billing", billingAdminRoutes(db));
   app.use("/api/admin/notifications", notificationsAdminRoutes(db));

@@ -364,6 +364,7 @@ const routes = [
   { re: /^\/customers\/new$/, view: viewCustomerForm, nav: "customers" },
   { re: /^\/customers\/([0-9a-f-]{36})$/, view: viewCustomerDetail, nav: "customers" },
   { re: /^\/customers\/([0-9a-f-]{36})\/edit$/, view: viewCustomerForm, nav: "customers" },
+  { re: /^\/billing$/, view: viewBilling, nav: "billing" },
   { re: /^\/settings\/business$/, view: viewSettingsBusiness, nav: "settings" },
   { re: /^\/settings\/payments$/, view: viewSettingsPayments, nav: "settings" },
   { re: /^\/settings\/integrations$/, view: viewSettingsIntegrations, nav: "settings" },
@@ -428,11 +429,16 @@ async function render() {
 /* ---------------- Dashboard ---------------- */
 
 async function viewDashboard() {
-  const d = await api("/dashboard");
+  const [d, billing] = await Promise.all([
+    api("/dashboard"),
+    api("/billing").catch(() => null),
+  ]);
+  const subBanner = subscriptionDueBanner(billing);
 
   if (d.totals.invoices === 0) {
     view.innerHTML = `
       <div class="view-head"><div><h1>Dashboard</h1></div></div>
+      ${subBanner}
       <div class="firstrun">
         <h2>Create your first invoice</h2>
         <p>Add a customer, enter the details, and send a professional invoice.</p>
@@ -448,6 +454,7 @@ async function viewDashboard() {
       <a class="btn" href="/app/invoices/new">Create invoice</a>
     </div>
 
+    ${subBanner}
     ${fireNudge(d)}
 
     <div class="summary">
@@ -480,6 +487,15 @@ async function viewDashboard() {
         ? invoiceMiniTable(d.recentPayments, "")
         : `<p class="muted">No payments recorded yet.</p>`}
     </div>`;
+}
+
+function subscriptionDueBanner(billing) {
+  if (!billing || !(billing.amountDueCents > 0)) return "";
+  const ccy = billing.subscription ? billing.subscription.currency : "EUR";
+  return `<div class="notice${billing.hasOverdue ? " danger" : ""}">
+    <strong>${fmtMoney(billing.amountDueCents, ccy)} due for your subscription${billing.hasOverdue ? " — overdue" : ""}.</strong>
+    <a href="/app/billing">Pay by bank →</a>
+  </div>`;
 }
 
 function fireNudge(d) {
@@ -781,6 +797,114 @@ async function viewCustomerDetail(m) {
     }
   });
   wireRowLinks();
+}
+
+/* ---------------- Billing (our subscription) ---------------- */
+
+const PLATFORM_INVOICE_STATUS = {
+  draft: "Draft",
+  issued: "Awaiting payment",
+  payment_pending: "Awaiting payment",
+  paid: "Paid",
+  cancelled: "Cancelled",
+};
+
+function platformStatusLabel(i) {
+  if (i.status === "paid") return `<span class="status paid">PAID</span>`;
+  if (i.status === "cancelled") return `<span class="status">CANCELLED</span>`;
+  if (i.overdue) return `<span class="status overdue">OVERDUE</span>`;
+  if (i.status === "issued" || i.status === "payment_pending") return `<span class="status unpaid">DUE</span>`;
+  return `<span class="status">${esc(PLATFORM_INVOICE_STATUS[i.status] || i.status)}</span>`;
+}
+
+async function viewBilling() {
+  const b = await api("/billing");
+  const s = b.subscription;
+  const due = b.invoices.filter((i) => i.status === "issued" || i.status === "payment_pending");
+  const history = b.invoices.filter((i) => i.status === "paid" || i.status === "cancelled");
+
+  view.innerHTML = `
+    <div class="view-head">
+      <div><h1>Billing</h1><p class="lede">Your ${esc(b.businessName || "subscription")} plan and invoices.</p></div>
+    </div>
+
+    ${s ? `<div class="card">
+      <dl class="dl">
+        <dt>Plan</dt><dd>${esc(s.plan.name)}${s.plan.isTest ? ' <span class="pill">test</span>' : ""}</dd>
+        <dt>Price</dt><dd>${fmtMoney(s.amountCents, s.currency)} / ${esc(s.billingInterval)}</dd>
+        <dt>Current period</dt><dd>${esc(fmtDay(s.currentPeriodStart))} – ${esc(fmtDay(s.currentPeriodEnd))}</dd>
+        <dt>Renews</dt><dd>${esc(fmtDay(s.renewalDate))}${s.cancelAtPeriodEnd ? " (cancels at period end)" : ""}</dd>
+        <dt>Status</dt><dd><span class="status ${s.status === "active" ? "paid" : ""}">${esc(s.status.toUpperCase())}</span></dd>
+      </dl>
+    </div>` : `<div class="notice">No subscription is set up for your account yet. Your provider will assign a plan.</div>`}
+
+    ${b.amountDueCents > 0 ? `<div class="notice${b.hasOverdue ? " danger" : ""}" style="margin-top:20px">
+      <strong>${fmtMoney(b.amountDueCents, s ? s.currency : "EUR")} due${b.hasOverdue ? " — overdue" : ""}.</strong>
+      Pay by bank below to keep your account active.
+    </div>` : ""}
+
+    <div class="block">
+      <h3>Amounts due</h3>
+      ${due.length ? due.map(platformInvoiceCard).join("") : `<p class="muted">Nothing due. You're all paid up.</p>`}
+    </div>
+
+    <div class="block">
+      <h3>Payment history</h3>
+      ${history.length ? `<div class="table-scroll"><table>
+        <thead><tr><th>Invoice</th><th>Description</th><th>Issued</th><th class="num">Amount</th><th>Status</th></tr></thead>
+        <tbody>
+          ${history.map((i) => `<tr>
+            <td class="mono">${esc(i.number)}</td>
+            <td>${esc(i.description)}</td>
+            <td>${esc(fmtDay(i.issueDate))}</td>
+            <td class="num">${fmtMoney(i.amountCents, i.currency)}</td>
+            <td>${platformStatusLabel(i)}</td>
+          </tr>`).join("")}
+        </tbody></table></div>` : `<p class="muted">No past invoices yet.</p>`}
+    </div>`;
+
+  view.querySelectorAll("[data-pay]").forEach((btn) =>
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.pay;
+      const slot = document.getElementById(`pay-slot-${id}`);
+      btn.disabled = true;
+      btn.textContent = "Preparing…";
+      try {
+        const r = await api(`/billing/invoices/${id}/payment-link`, { method: "POST" });
+        slot.innerHTML = paymentBox(r.hostedUrl, r.paymentQrSvg);
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = "Pay by bank";
+        slot.innerHTML = `<p class="error">${esc(e.message)}</p>`;
+      }
+    }));
+}
+
+function platformInvoiceCard(i) {
+  return `<div class="card" style="margin-bottom:14px">
+    <dl class="dl">
+      <dt>Invoice</dt><dd class="mono">${esc(i.number)}</dd>
+      <dt>Description</dt><dd>${esc(i.description)}</dd>
+      <dt>Amount</dt><dd>${fmtMoney(i.amountCents, i.currency)}</dd>
+      <dt>Due</dt><dd>${esc(fmtDay(i.dueDate))} ${platformStatusLabel(i)}</dd>
+    </dl>
+    <div id="pay-slot-${esc(i.id)}">
+      ${i.hostedPaymentUrl && i.paymentQrSvg
+        ? paymentBox(i.hostedPaymentUrl, i.paymentQrSvg)
+        : `<button data-pay="${esc(i.id)}">Pay by bank</button>`}
+    </div>
+  </div>`;
+}
+
+function paymentBox(hostedUrl, qrSvg) {
+  return `<div class="pay-box">
+    ${qrSvg ? `<img class="pay-qr" alt="Payment QR code" src="${esc(qrSvg)}">` : ""}
+    <div class="pay-actions">
+      <p class="muted">Scan with your banking app, or</p>
+      <a class="btn" href="${esc(hostedUrl)}" target="_blank" rel="noopener">Open secure payment page</a>
+      <p class="muted" style="margin-top:8px">Payment is confirmed automatically once your bank completes it.</p>
+    </div>
+  </div>`;
 }
 
 /* ---------------- Settings ---------------- */

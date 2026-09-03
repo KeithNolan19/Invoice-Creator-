@@ -676,7 +676,7 @@ async function renderTenantBilling(tenantId, slotId) {
   const slot = document.getElementById(slotId);
   if (!slot) return;
   const [detail, { plans }] = await Promise.all([
-    api(`/billing/tenants/${tenantId}`, { base: "/api/admin/billing" }),
+    api(`/tenants/${tenantId}`, { base: "/api/admin/billing" }),
     api(`/plans`, { base: "/api/admin/billing" }),
   ]);
   const s = detail.subscription;
@@ -732,7 +732,7 @@ async function renderTenantBilling(tenantId, slotId) {
     e.preventDefault();
     const err = g("sub-err"); err.hidden = true;
     try {
-      await api(`/billing/tenants/${tenantId}/subscription`, {
+      await api(`/tenants/${tenantId}/subscription`, {
         base: "/api/admin/billing",
         method: "PUT",
         body: JSON.stringify({ planId: g("sub-plan").value, billingInterval: g("sub-interval").value }),
@@ -743,24 +743,24 @@ async function renderTenantBilling(tenantId, slotId) {
   const cancelBtn = g("sub-cancel");
   if (cancelBtn) cancelBtn.addEventListener("click", async () => {
     if (!confirm("Cancel this tenant's subscription?")) return;
-    await api(`/billing/tenants/${tenantId}/subscription`, { base: "/api/admin/billing", method: "DELETE" });
+    await api(`/tenants/${tenantId}/subscription`, { base: "/api/admin/billing", method: "DELETE" });
     renderTenantBilling(tenantId, slotId);
   });
 
   const doAction = async (fn) => { try { await fn(); renderTenantBilling(tenantId, slotId); } catch (e) { alert(e.message); } };
   slot.querySelectorAll("[data-issue]").forEach((b) => b.addEventListener("click", () =>
-    doAction(() => api(`/billing/invoices/${b.dataset.issue}/issue`, { base: "/api/admin/billing", method: "POST" }))));
+    doAction(() => api(`/invoices/${b.dataset.issue}/issue`, { base: "/api/admin/billing", method: "POST" }))));
   slot.querySelectorAll("[data-cancel]").forEach((b) => b.addEventListener("click", () =>
-    doAction(() => api(`/billing/invoices/${b.dataset.cancel}/cancel`, { base: "/api/admin/billing", method: "POST" }))));
+    doAction(() => api(`/invoices/${b.dataset.cancel}/cancel`, { base: "/api/admin/billing", method: "POST" }))));
   slot.querySelectorAll("[data-link]").forEach((b) => b.addEventListener("click", () =>
     doAction(async () => {
-      const r = await api(`/billing/invoices/${b.dataset.link}/payment-link`, { base: "/api/admin/billing", method: "POST" });
+      const r = await api(`/invoices/${b.dataset.link}/payment-link`, { base: "/api/admin/billing", method: "POST" });
       if (r.hostedUrl) window.open(r.hostedUrl, "_blank");
     })));
   slot.querySelectorAll("[data-record]").forEach((b) => b.addEventListener("click", () => {
     const amt = prompt("Amount received in cents (external payment):");
     if (!amt) return;
-    doAction(() => api(`/billing/invoices/${b.dataset.record}/record-payment`, {
+    doAction(() => api(`/invoices/${b.dataset.record}/record-payment`, {
       base: "/api/admin/billing", method: "POST",
       body: JSON.stringify({ amountCents: Number(amt), currency: "EUR", reference: "admin-recorded" }),
     }));
@@ -778,7 +778,7 @@ async function renderTenantBilling(tenantId, slotId) {
       </form>`;
     g("adhoc-form").addEventListener("submit", async (e) => {
       e.preventDefault();
-      await doAction(() => api(`/billing/tenants/${tenantId}/invoices`, {
+      await doAction(() => api(`/tenants/${tenantId}/invoices`, {
         base: "/api/admin/billing", method: "POST",
         body: JSON.stringify({ description: g("ah-desc").value, amountCents: Number(g("ah-amt").value), currency: "EUR", dueDate: g("ah-due").value }),
       }));
@@ -853,7 +853,7 @@ async function notificationsView() {
     const out = document.getElementById("tick-out");
     out.innerHTML = `<p class="muted">Running…</p>`;
     try {
-      const r = await api("/billing/tick", { base: "/api/admin/billing", method: "POST" });
+      const r = await api("/tick", { base: "/api/admin/billing", method: "POST" });
       out.innerHTML = `<p class="ok-msg">Tick done: ${esc(JSON.stringify(r))}</p>`;
       setTimeout(() => { notificationsView(); refreshNotifBadge(); }, 400);
     } catch (e) { out.innerHTML = `<p class="error">${esc(e.message)}</p>`; }

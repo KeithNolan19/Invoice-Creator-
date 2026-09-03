@@ -51,6 +51,27 @@ a { color: inherit; }
   color: var(--ink-soft);
 }
 .notice strong { color: var(--ink); }
+.notice.danger { border-color: color-mix(in srgb, var(--danger) 45%, var(--line-strong)); background: rgba(124,45,45,0.05); }
+
+/* --- Pay-by-bank box (subscription billing) ------------------------- */
+.pay-box {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.pay-qr {
+  width: 168px;
+  height: 168px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+}
+.pay-actions { flex: 1; min-width: 220px; }
+.pay-actions .btn { margin-top: 4px; }
 
 /* --- Controls --------------------------------------------------------- */
 input, select, textarea {
