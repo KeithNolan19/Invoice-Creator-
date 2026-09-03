@@ -29,6 +29,12 @@ server {
     add_header Referrer-Policy "same-origin" always;
     add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'" always;
 
+    # This app doesn't fingerprint its assets, so don't let browsers cache
+    # anything — it's a tiny bundle, and it means a deploy always takes effect
+    # and a browser that cached the pre-cutover mockup at "/" stops serving it.
+    proxy_hide_header Cache-Control;
+    add_header Cache-Control "no-store" always;
+
     # Bare domain -> the customer app sign-in. (The old static mockups are no
     # longer served.)
     location = / { return 302 /app/; }
