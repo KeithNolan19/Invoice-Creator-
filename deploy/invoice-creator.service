@@ -27,6 +27,9 @@ Restart=on-failure
 RestartSec=2
 KillSignal=SIGTERM
 TimeoutStopSec=15
+# Small droplet: apply memory back-pressure before the kernel OOM-kills at large.
+MemoryHigh=350M
+MemoryMax=460M
 
 # --- Hardening -------------------------------------------------------------
 NoNewPrivileges=true

@@ -28,8 +28,12 @@ echo "    now at $(git rev-parse --short HEAD) - $(git log -1 --pretty=%s)"
 echo "==> Installing dependencies"
 npm ci --include=dev
 
-echo "==> Type-checking"
-npm run typecheck
+if [ "${SKIP_TYPECHECK:-0}" = "1" ]; then
+  echo "==> Skipping type-check (SKIP_TYPECHECK=1)"
+else
+  echo "==> Type-checking"
+  npm run typecheck
+fi
 
 echo "==> Running database migrations (as invoice_owner)"
 set -a

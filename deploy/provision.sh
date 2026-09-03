@@ -38,8 +38,26 @@ ADMIN_NAME=${ADMIN_NAME:-}
 say()  { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 warn() { printf '\033[33m!! %s\033[0m\n' "$*" >&2; }
 die()  { printf '\033[31m✖ %s\033[0m\n' "$*" >&2; exit 1; }
+psql_su() { sudo -u postgres psql -v ON_ERROR_STOP=1 "$@"; }
 
 [ "$(id -u)" -eq 0 ] || die "run as root (sudo)"
+
+# ---------------------------------------------------------------------------
+say "Ensuring swap (this droplet has little RAM)"
+if [ "$(swapon --show=NAME --noheadings | wc -l)" -eq 0 ]; then
+  SWAP_GB=${SWAP_GB:-2}
+  fallocate -l "${SWAP_GB}G" /swapfile 2>/dev/null || \
+    dd if=/dev/zero of=/swapfile bs=1M count=$((SWAP_GB * 1024)) status=none
+  chmod 600 /swapfile
+  mkswap /swapfile >/dev/null
+  swapon /swapfile
+  grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+  sysctl -w vm.swappiness=10 >/dev/null
+  grep -q '^vm.swappiness' /etc/sysctl.conf || echo 'vm.swappiness=10' >> /etc/sysctl.conf
+  echo "    added ${SWAP_GB}G swap"
+else
+  echo "    swap already present"
+fi
 
 # ---------------------------------------------------------------------------
 say "Installing OS packages"
@@ -81,13 +99,15 @@ chown -R "$APP_USER:$APP_USER" "$APP_DIR"
 echo "    at $(git -C "$APP_DIR" rev-parse --short HEAD) - $(git -C "$APP_DIR" log -1 --pretty=%s)"
 
 # ---------------------------------------------------------------------------
-say "Configuring PostgreSQL (localhost only)"
+say "Configuring PostgreSQL (localhost only, low-memory tuning)"
 systemctl enable --now postgresql >/dev/null 2>&1 || true
-PG_CONF=$(sudo -u postgres psql -tAc 'SHOW config_file' | tr -d '[:space:]')
-if [ -n "$PG_CONF" ] && ! grep -qE "^\s*listen_addresses\s*=\s*'localhost'" "$PG_CONF"; then
-  sed -i "s/^#\?\s*listen_addresses.*/listen_addresses = 'localhost'/" "$PG_CONF"
-  systemctl restart postgresql
-fi
+psql_su -c "ALTER SYSTEM SET listen_addresses = 'localhost'"
+psql_su -c "ALTER SYSTEM SET shared_buffers = '64MB'"
+psql_su -c "ALTER SYSTEM SET effective_cache_size = '192MB'"
+psql_su -c "ALTER SYSTEM SET work_mem = '4MB'"
+psql_su -c "ALTER SYSTEM SET maintenance_work_mem = '32MB'"
+psql_su -c "ALTER SYSTEM SET max_connections = '30'"
+systemctl restart postgresql
 
 # ---------------------------------------------------------------------------
 say "Writing $CONF_DIR (secrets generated once, kept on re-run)"
@@ -130,7 +150,6 @@ chown "$APP_USER:$APP_USER" "$APP_ENV"; chmod 640 "$APP_ENV"
 
 # ---------------------------------------------------------------------------
 say "Creating database role + database"
-psql_su() { sudo -u postgres psql -v ON_ERROR_STOP=1 "$@"; }
 if ! psql_su -tAc "SELECT 1 FROM pg_roles WHERE rolname='invoice_owner'" | grep -q 1; then
   psql_su -c "CREATE ROLE invoice_owner LOGIN PASSWORD '${OWNER_PW}' CREATEROLE"
 else

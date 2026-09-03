@@ -223,6 +223,11 @@ not a backup.
 - CI that runs `npm test` on every push, and retiring the `git pull` workflow
   (§3.3).
 - Moving Postgres off the app VPS once load or availability needs it.
+- **The current droplet is 512 MB RAM.** `provision.sh` adds a 2 GB swapfile and
+  tunes Postgres down (`shared_buffers=64MB`), and the service has
+  `MemoryHigh/Max` back-pressure — but running `tsc` and `tsx` on that box is
+  tight. Introduce a compiled build (ship `dist/`, drop `tsx` + devDeps at
+  runtime) or resize to 1 GB before real traffic.
 
 Now in place (§3): least-privilege DB roles, non-superuser app connection,
 manual migrate-and-restart deploy with health check, HTTPS/HSTS + security
