@@ -70,29 +70,78 @@ are an explicit deploy step.
 
 ---
 
-## 3. Deployment pipeline — required steps
+## 3. The vibedev.ie runbook (single VPS)
 
-The current `.github/workflows/deploy.yml` only does `git pull` on the VPS. That
-is **not sufficient**. A safe pipeline needs, in order:
+Target: one Ubuntu VPS (`144.126.231.104`, DNS `vibedev.ie`) running PostgreSQL,
+the Node app under systemd, and nginx terminating TLS. All config templates are
+in [`deploy/`](../deploy/). The app runs straight from source via `tsx` (no build
+step).
 
-1. **Checkout** the release commit.
-2. **`npm ci`** — clean, lockfile-exact install.
-3. **`npm run typecheck`** and **`npm test`** — block the deploy on any failure
-   (173 tests, incl. the security + mutation-verified suites).
-4. **Build** — currently the app runs via `tsx` (no build). If a compiled build
-   is introduced, run it here and deploy the artifact, not the source tree.
-5. **Provision secrets/env** on the target from the secret store (never commit).
-6. **Database migrations** — `DATABASE_ADMIN_URL=… npm run migrate` as
-   `invoice_owner`. Migrations are forward-only and each runs in its own
-   transaction; a failed migration aborts the deploy before the app restarts.
-7. **Restart** the app process (systemd / pm2 / container) against the new code.
-8. **Health check** — poll `GET /health` (checks DB connectivity via the
-   `invoice_auth` role) until `200 {"status":"ok"}`; fail the deploy on timeout.
-9. **Smoke** — an unauthenticated request is `401`, `GET /admin/` serves the UI.
+> The old `.github/workflows/deploy.yml` only runs `git pull` — it never installs
+> deps, migrates, or restarts anything. That is why a push appeared to "do
+> nothing". Deploys are now the manual [`scripts/deploy.sh`](../scripts/deploy.sh);
+> the workflow is left untouched for now (see §3.3).
 
-Do **not** add a production deploy workflow until: the target host, a managed or
-self-hosted Postgres with the role setup above, the secret store, and a process
-supervisor all exist. Until then this file is the runbook.
+### 3.1 First-time provisioning (once)
+
+[`deploy/provision.sh`](../deploy/provision.sh) does the whole thing and is
+idempotent (safe to re-run). On the VPS as root:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/KeithNolan19/Invoice-Creator-/main/deploy/provision.sh \
+  | sudo CERTBOT_EMAIL=you@example.com ADMIN_EMAIL=you@example.com bash
+```
+
+It installs packages + Node 24, creates the `invoice` system user, clones the
+repo to `/var/www/invoice-creator`, generates the DB passwords + `JWT_SECRET`
+(written once to `/etc/invoice-creator/{app,admin}.env`, never rotated on
+re-run), creates the `invoice_owner` role + `invoice_creator` database, runs
+`npm ci` + migrations, sets the `invoice_app_login` password, installs and starts
+the systemd service, health-checks it, creates the platform admin (password
+generated and printed **once** unless `ADMIN_PASSWORD` is set), swaps the nginx
+site in (removing the old mockup), and runs certbot for TLS.
+
+Then lock the firewall (Postgres stays on localhost, never opened):
+
+```bash
+sudo ufw allow OpenSSH && sudo ufw allow 'Nginx Full' && sudo ufw enable
+```
+
+Individual templates ([`postgres-setup.sql`](../deploy/postgres-setup.sql),
+[`invoice-creator.service`](../deploy/invoice-creator.service),
+[`invoice-creator.nginx`](../deploy/invoice-creator.nginx),
+[`app.env.example`](../deploy/app.env.example),
+[`admin.env.example`](../deploy/admin.env.example)) are there if you'd rather do
+it by hand — `provision.sh` is just those steps wired together.
+
+### 3.2 Every deploy after that
+
+```bash
+sudo /var/www/invoice-creator/scripts/deploy.sh
+```
+
+It does: `git reset --hard origin/main` → `npm ci` → `npm run typecheck` →
+`npm run migrate` (as `invoice_owner`, forward-only) → `systemctl restart
+invoice-creator` → poll `/health`, failing the deploy on timeout. It does **not**
+run `npm test` (vitest + PGlite is memory-heavy) — running `npm test` green
+locally on the commit you're shipping is the precondition.
+
+### 3.3 The GitHub Actions workflow
+
+`.github/workflows/deploy.yml` still SSHes in and runs `git pull` on every push
+to `main`. With `deploy.sh` doing `git reset --hard` this is redundant, and a lone
+`git pull` is what leaves the box in a half-updated state (new files, old
+process, un-migrated DB). Recommended: delete the workflow, or cut it down to a
+CI-only `npm ci && npm run typecheck && npm test` check with no SSH step. Not
+changed here pending that call.
+
+### 3.4 First login
+
+The platform admin created above signs in at **`https://vibedev.ie/admin/`** —
+*not* `/app/`. `requireTenantUser` blocks platform admins from the customer app
+by design. From the Admin Control Centre the admin creates the first tenant and
+its tenant-admin user; that user then signs in at `https://vibedev.ie/app/`
+(which is also where `https://vibedev.ie/` redirects).
 
 ### Rollback
 
@@ -110,9 +159,24 @@ supervisor all exist. Until then this file is the runbook.
 
 ## 4. Backup & recovery (Postgres)
 
-Not yet configured. Requirements for production:
+### Interim: nightly `pg_dump` (single-VPS setup)
 
-### Automated backups
+Until the WAL-archiving setup below exists, run a nightly encrypted dump copied
+off the box. This loses up to ~24h on restore — acceptable only for the current
+low-stakes state, not a target.
+
+```bash
+# /etc/cron.d/invoice-creator-backup  (runs as postgres)
+30 3 * * * postgres pg_dump -Fc invoice_creator | \
+  age -r <recipient> -o /var/backups/invoice-creator/$(date +\%F).dump.age && \
+  rclone copy /var/backups/invoice-creator remote:invoice-creator-backups
+```
+
+Test the restore quarterly into a scratch database (`pg_restore` → point a
+staging app at it → `/health` + smoke). A dump that has never been restored is
+not a backup.
+
+### Target: automated backups
 - **Continuous WAL archiving + daily base backup** (managed provider PITR, or
   `pgBackRest` / `wal-g` to object storage). Nightly `pg_dump` alone is a weak
   fallback — it loses up to 24h and locks less cleanly at scale.
@@ -154,6 +218,12 @@ Not yet configured. Requirements for production:
   the current limiter is per-process in-memory.
 - Structured request logging + error monitoring (Sentry/OTel) — errors are
   currently `console.error` only.
-- The Postgres role/backup/secret-store infrastructure described above.
-- A real deploy workflow replacing `git pull`.
-- Security headers / HTTPS termination / HSTS at the proxy.
+- WAL-archiving / PITR backups (§4) — the nightly `pg_dump` is interim only.
+- A secret store (env files on the box are the current mechanism).
+- CI that runs `npm test` on every push, and retiring the `git pull` workflow
+  (§3.3).
+- Moving Postgres off the app VPS once load or availability needs it.
+
+Now in place (§3): least-privilege DB roles, non-superuser app connection,
+manual migrate-and-restart deploy with health check, HTTPS/HSTS + security
+headers at nginx.

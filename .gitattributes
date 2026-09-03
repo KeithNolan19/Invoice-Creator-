@@ -1,0 +1,6 @@
+# Files that run on the Linux VPS must keep LF endings regardless of the
+# developer's platform / core.autocrlf setting.
+*.sh            text eol=lf
+*.sql           text eol=lf
+deploy/*        text eol=lf
+scripts/*       text eol=lf

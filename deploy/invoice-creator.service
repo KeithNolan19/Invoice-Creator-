@@ -1,0 +1,49 @@
+# systemd unit for the Invoice Creator API.
+#
+# Install:
+#   sudo cp deploy/invoice-creator.service /etc/systemd/system/
+#   # adjust ExecStart if `which node` is not /usr/bin/node (e.g. under nvm)
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now invoice-creator
+#
+# The app runs as the unprivileged `invoice` user and reads its configuration
+# from /etc/invoice-creator/app.env (which must NOT contain DATABASE_ADMIN_URL).
+# Migrations are a separate deploy step (scripts/deploy.sh); src/server.ts skips
+# auto-migrate when NODE_ENV=production.
+
+[Unit]
+Description=Invoice Creator API
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=invoice
+Group=invoice
+WorkingDirectory=/var/www/invoice-creator
+EnvironmentFile=/etc/invoice-creator/app.env
+ExecStart=/usr/bin/node --import tsx/esm src/server.ts
+Restart=on-failure
+RestartSec=2
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+# --- Hardening -------------------------------------------------------------
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+# The app only needs to write inside its own checkout (npm/tsx caches, etc.).
+ReadWritePaths=/var/www/invoice-creator
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

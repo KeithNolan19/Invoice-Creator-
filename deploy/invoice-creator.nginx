@@ -1,0 +1,45 @@
+# nginx site for vibedev.ie -> Invoice Creator (Node app on 127.0.0.1:3000).
+#
+# This is the HTTP (port 80) bootstrap config. Run
+#   sudo certbot --nginx -d vibedev.ie -d www.vibedev.ie --redirect
+# afterwards: certbot copies this server block to a new `listen 443 ssl` block,
+# wires in the certificate, and turns this block into an HTTP->HTTPS redirect.
+# deploy/provision.sh does all of that for you.
+#
+# Install manually:
+#   sudo cp deploy/invoice-creator.nginx /etc/nginx/sites-available/invoice-creator
+#   sudo ln -sf /etc/nginx/sites-available/invoice-creator /etc/nginx/sites-enabled/
+#   sudo rm -f /etc/nginx/sites-enabled/default        # stop serving the old mockup
+#   sudo nginx -t && sudo systemctl reload nginx
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name vibedev.ie www.vibedev.ie;
+
+    # The API caps JSON bodies at 100kb (express.json limit).
+    client_max_body_size 128k;
+
+    # Security headers. The SPAs load fonts from Google Fonts; everything else
+    # is same-origin. HSTS is ignored over plain HTTP and takes effect once
+    # certbot copies this block to port 443.
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "same-origin" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'" always;
+
+    # Bare domain -> the customer app sign-in. (The old static mockups are no
+    # longer served.)
+    location = / { return 302 /app/; }
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 30s;
+    }
+}

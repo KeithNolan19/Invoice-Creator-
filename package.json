@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "migrate": "node --import tsx/esm src/db/migrate-cli.ts",
     "seed": "node --import tsx/esm src/db/seed-cli.ts",
+    "create-admin": "node --import tsx/esm src/db/create-admin-cli.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
