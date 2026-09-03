@@ -17,10 +17,13 @@
 
 \set ON_ERROR_STOP on
 
--- Owner / migration role. Needs CREATEROLE because the migrations themselves
--- CREATE the three application roles (invoice_app, invoice_auth,
--- invoice_app_login). It is not a superuser and has no BYPASSRLS.
-CREATE ROLE invoice_owner LOGIN PASSWORD :'owner_pw' CREATEROLE;
+-- Owner / migration role. Needs:
+--   CREATEROLE  - the migrations CREATE the three application roles
+--   BYPASSRLS   - PG16+ requires the creator to have BYPASSRLS in order to
+--                 CREATE the invoice_auth role WITH BYPASSRLS (migration 007)
+-- It is not a superuser. It is used only for migrations/seed/create-admin,
+-- never for request handling (that is invoice_app_login, which has neither).
+CREATE ROLE invoice_owner LOGIN PASSWORD :'owner_pw' CREATEROLE BYPASSRLS;
 
 CREATE DATABASE invoice_creator OWNER invoice_owner;
 

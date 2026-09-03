@@ -151,9 +151,9 @@ chown "$APP_USER:$APP_USER" "$APP_ENV"; chmod 640 "$APP_ENV"
 # ---------------------------------------------------------------------------
 say "Creating database role + database"
 if ! psql_su -tAc "SELECT 1 FROM pg_roles WHERE rolname='invoice_owner'" | grep -q 1; then
-  psql_su -c "CREATE ROLE invoice_owner LOGIN PASSWORD '${OWNER_PW}' CREATEROLE"
+  psql_su -c "CREATE ROLE invoice_owner LOGIN PASSWORD '${OWNER_PW}' CREATEROLE BYPASSRLS"
 else
-  psql_su -c "ALTER ROLE invoice_owner LOGIN PASSWORD '${OWNER_PW}'"
+  psql_su -c "ALTER ROLE invoice_owner LOGIN PASSWORD '${OWNER_PW}' CREATEROLE BYPASSRLS"
 fi
 if ! psql_su -tAc "SELECT 1 FROM pg_database WHERE datname='invoice_creator'" | grep -q 1; then
   psql_su -c "CREATE DATABASE invoice_creator OWNER invoice_owner"

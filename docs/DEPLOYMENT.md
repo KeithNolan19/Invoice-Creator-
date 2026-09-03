@@ -12,7 +12,7 @@ Migrations create four roles (see `007_least_privilege_roles.sql`):
 
 | Role                | Attributes                     | Privileges                                                                 | Used by |
 | ------------------- | ------------------------------ | ------------------------------------------------------------------------- | ------- |
-| `invoice_owner` *(you create this)* | `LOGIN`, owns the schema, `CREATEROLE` | DDL. Runs `npm run migrate` / `npm run seed`. | deploy step only |
+| `invoice_owner` *(you create this)* | `LOGIN`, owns the schema, `CREATEROLE`, `BYPASSRLS` | DDL. Runs `npm run migrate` / `npm run seed` / `npm run create-admin`. (`BYPASSRLS` is needed only so it can *create* the `invoice_auth` role on PG16+; not a superuser.) | deploy step only |
 | `invoice_app`       | `NOLOGIN`, **RLS-subject**     | `SELECT/INSERT/UPDATE/DELETE` on `tenants,users,invoices` (policy-scoped); `SELECT,INSERT` on `audit_logs` | request handling (`SET LOCAL ROLE`) |
 | `invoice_auth`      | `NOLOGIN`, `BYPASSRLS`         | `SELECT` on `users,tenants` **only**                                      | pre-authentication identity lookup |
 | `invoice_app_login` | `LOGIN`, **not** superuser, **not** `BYPASSRLS`, member of `invoice_app` + `invoice_auth` | none directly — it `SET LOCAL ROLE`s to the two above | the running app (`DATABASE_URL`) |
@@ -21,7 +21,7 @@ Migrations create four roles (see `007_least_privilege_roles.sql`):
 
 ```sql
 -- 1. an owner/migration role
-CREATE ROLE invoice_owner LOGIN PASSWORD '<generated>' CREATEROLE;
+CREATE ROLE invoice_owner LOGIN PASSWORD '<generated>' CREATEROLE BYPASSRLS;
 CREATE DATABASE invoice_creator OWNER invoice_owner;
 
 -- 2. run migrations AS invoice_owner (they CREATE the app roles):
