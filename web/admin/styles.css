@@ -39,6 +39,11 @@ a { color: inherit; }
 .lede { color: var(--ink-soft); margin-bottom: 20px; }
 .muted { color: var(--ink-soft); }
 .error { color: var(--danger); font-size: 13px; margin: 8px 0; }
+.ok-msg { color: var(--ok); font-size: 13px; margin: 8px 0; }
+.inline-form textarea { width: 100%; min-height: 60px; font: inherit; padding: 8px 10px;
+  border: 1px solid var(--line-strong); border-radius: 6px; background: var(--paper); }
+.inline-form select { font: inherit; padding: 8px 10px; border: 1px solid var(--line-strong);
+  border-radius: 6px; background: var(--paper); }
 .notice {
   border: 1px solid var(--line-strong);
   background: var(--raise);

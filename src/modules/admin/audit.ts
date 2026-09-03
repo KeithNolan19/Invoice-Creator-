@@ -6,10 +6,16 @@ export type AuditAction =
   | "tenant.reactivated"
   | "user.created"
   | "user.disabled"
-  | "user.enabled";
+  | "user.enabled"
+  // Platform billing
+  | "billing.config_updated"
+  | "billing.fire_verified"
+  | "billing.webhook_received"
+  | "billing.webhook_failed";
 
 export interface AuditEntry {
-  actorUserId: string;
+  /** null for system-initiated events (webhook receiver, scheduled jobs). */
+  actorUserId: string | null;
   action: AuditAction;
   tenantId?: string | null;
   targetUserId?: string | null;

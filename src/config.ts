@@ -20,6 +20,28 @@ if (isProduction && (jwtSecret === DEV_JWT_SECRET || jwtSecret.length < 32)) {
   throw new Error("JWT_SECRET must be set to a strong value (>= 32 chars) in production");
 }
 
+// AES-256-GCM key for secrets stored in the DB (Fire.com credentials, webhook
+// signing keys). Base64 of exactly 32 bytes. Required in production.
+const DEV_ENCRYPTION_KEY_B64 = Buffer.from("dev-encryption-key-not-for-prod!").toString("base64"); // 32 bytes
+function loadEncryptionKey(): Buffer {
+  const raw = process.env.APP_ENCRYPTION_KEY || (isProduction ? "" : DEV_ENCRYPTION_KEY_B64);
+  if (!raw) {
+    throw new Error(
+      "APP_ENCRYPTION_KEY is required in production. Generate: " +
+        `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`,
+    );
+  }
+  const key = Buffer.from(raw, "base64");
+  if (key.length !== 32) {
+    throw new Error(`APP_ENCRYPTION_KEY must be base64 of exactly 32 bytes (decoded ${key.length})`);
+  }
+  if (isProduction && raw === DEV_ENCRYPTION_KEY_B64) {
+    throw new Error("APP_ENCRYPTION_KEY must not be the development default in production");
+  }
+  return key;
+}
+const encryptionKey = isTest ? Buffer.from(DEV_ENCRYPTION_KEY_B64, "base64") : loadEncryptionKey();
+
 export const config = {
   env,
   isTest,
@@ -36,6 +58,15 @@ export const config = {
     // Short-lived access token. There is no refresh token yet, so logout / disable
     // rely on the `tokens_invalid_before` watermark for immediate revocation.
     expiresIn: process.env.JWT_EXPIRES_IN ?? "30m",
+  },
+
+  /** AES-256-GCM key (32 bytes) for DB-stored secrets. See src/crypto/secretbox.ts. */
+  encryptionKey,
+
+  /** Fire.com (platform-level Open Banking). Credentials live encrypted in the DB. */
+  fire: {
+    apiBaseUrl: process.env.FIRE_API_BASE_URL ?? "https://api.fire.com",
+    paymentsBaseUrl: process.env.FIRE_PAYMENTS_BASE_URL ?? "https://payments.fire.com",
   },
 
   login: {

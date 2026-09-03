@@ -88,6 +88,7 @@ const routes = [
   { re: /^#\/$/, view: dashboardView },
   { re: /^#\/tenants$/, view: tenantsView },
   { re: /^#\/tenants\/([0-9a-f-]{36})$/, view: tenantDetailView },
+  { re: /^#\/billing$/, view: billingConfigView },
   { re: /^#\/audit$/, view: auditView },
 ];
 
@@ -103,7 +104,13 @@ function render() {
   const hash = location.hash || "#/";
   const path = hash.split("?")[0];
   const match = routes.map((r) => [r, r.re.exec(path)]).find(([, m]) => m);
-  const navKey = path.startsWith("#/tenants") ? "tenants" : path.startsWith("#/audit") ? "audit" : "dashboard";
+  const navKey = path.startsWith("#/tenants")
+    ? "tenants"
+    : path.startsWith("#/billing")
+      ? "billing"
+      : path.startsWith("#/audit")
+        ? "audit"
+        : "dashboard";
   document.querySelectorAll("[data-nav]").forEach((a) => a.classList.toggle("active", a.dataset.nav === navKey));
 
   view.innerHTML = `<p class="muted">Loading…</p>`;
@@ -350,6 +357,111 @@ async function statusAction(id, action) {
   } catch (e) {
     view.querySelector(".section-actions").insertAdjacentHTML("afterend", `<p class="error">${esc(e.message)}</p>`);
   }
+}
+
+async function billingConfigView() {
+  const { config: c } = await api("/billing/config");
+  const secretField = (id, label, has, hint) => `
+    <div class="field">
+      <label for="${id}">${esc(label)} ${has ? '<span class="pill">configured</span>' : ""}</label>
+      <input id="${id}" type="password" autocomplete="off" placeholder="${has ? "leave blank to keep current" : (hint || "")}">
+    </div>`;
+
+  view.innerHTML = `
+    <div class="view-head"><div><h1>Billing configuration</h1>
+      <p class="lede">Your business identity for the invoices you issue to tenants, and the platform Fire.com credentials.</p></div></div>
+
+    <form class="inline-form" id="billing-form" style="max-width:640px">
+      <h3>Your business (invoice header)</h3>
+      <div class="field"><label for="b-name">Business name</label><input id="b-name" maxlength="200" value="${esc(c.businessName || "")}"></div>
+      <div class="field"><label for="b-addr">Address</label><textarea id="b-addr" maxlength="2000">${esc(c.businessAddress || "")}</textarea></div>
+      <div class="field"><label for="b-tax">Tax / VAT number</label><input id="b-tax" maxlength="64" value="${esc(c.businessTaxNumber || "")}"></div>
+      <div class="field"><label for="b-email">Billing contact email</label><input id="b-email" type="email" maxlength="200" value="${esc(c.businessContactEmail || "")}"></div>
+
+      <h3 style="margin-top:22px">Billing behaviour</h3>
+      <div class="field"><label for="b-ccy">Default currency</label>
+        <select id="b-ccy">
+          <option value="EUR"${c.defaultCurrency === "EUR" ? " selected" : ""}>EUR</option>
+          <option value="GBP"${c.defaultCurrency === "GBP" ? " selected" : ""}>GBP</option>
+        </select></div>
+      <div class="field"><label for="b-prefix">Invoice number prefix</label><input id="b-prefix" maxlength="16" value="${esc(c.invoiceNumberPrefix)}"></div>
+      <div class="field"><label for="b-remind">Renewal reminder (days before)</label><input id="b-remind" type="number" min="0" max="90" value="${esc(c.renewalReminderDays)}"></div>
+      <div class="field"><label for="b-grace">Overdue grace period (days)</label><input id="b-grace" type="number" min="0" max="90" value="${esc(c.overdueGraceDays)}"></div>
+
+      <h3 style="margin-top:22px">Fire.com — platform Open Banking account</h3>
+      <p class="muted">The account <strong>your tenants pay into</strong>. Credentials are encrypted at rest and never shown again. From Fire for Business → Profile → API / Webhooks.</p>
+      ${secretField("f-cid", "Client ID", c.fire.hasClientId)}
+      ${secretField("f-ckey", "Client Key", c.fire.hasClientKey)}
+      ${secretField("f-refresh", "Refresh Token", c.fire.hasRefreshToken)}
+      ${secretField("f-wh", "Webhook private token", c.fire.hasWebhookPrivate)}
+      <div class="field"><label for="f-kid">Webhook public token (kid)</label><input id="f-kid" maxlength="200" value="${esc(c.fireWebhookKid || "")}"></div>
+      <div class="field"><label for="f-ican">Collection account ICAN</label><input id="f-ican" type="number" value="${esc(c.fireCollectionIcan || "")}"></div>
+
+      <p class="muted">
+        Status: ${c.fire.configured ? '<span class="pill">complete</span>' : '<span class="pill">incomplete</span>'}
+        ${c.fireBusinessId ? ` · Fire business ID ${esc(c.fireBusinessId)}` : ""}
+        ${c.fireLastVerifiedAt ? ` · verified ${esc(fmtDate(c.fireLastVerifiedAt))}` : ""}
+        ${c.fireLastError ? ` · <span class="error">last error: ${esc(c.fireLastError)}</span>` : ""}
+      </p>
+
+      <p class="error" id="billing-error" hidden></p>
+      <p class="ok-msg" id="billing-ok" hidden>Saved.</p>
+      <div class="actions">
+        <button type="submit" id="billing-submit">Save</button>
+        <button type="button" id="billing-verify" class="ghost">Verify Fire.com connection</button>
+      </div>
+      <p class="muted">Webhook URL to configure in the Fire portal: <span class="mono">${location.origin}/api/webhooks/fire</span></p>
+    </form>`;
+
+  const err = document.getElementById("billing-error");
+  const ok = document.getElementById("billing-ok");
+  const val = (id) => document.getElementById(id).value.trim();
+  const secretVal = (id) => { const v = document.getElementById(id).value; return v === "" ? undefined : v; };
+
+  document.getElementById("billing-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    err.hidden = true; ok.hidden = true;
+    const btn = document.getElementById("billing-submit");
+    btn.disabled = true;
+    const payload = {
+      businessName: val("b-name") || null,
+      businessAddress: val("b-addr") || null,
+      businessTaxNumber: val("b-tax") || null,
+      businessContactEmail: val("b-email") || null,
+      defaultCurrency: val("b-ccy"),
+      invoiceNumberPrefix: val("b-prefix") || "VD-",
+      renewalReminderDays: Number(val("b-remind") || 7),
+      overdueGraceDays: Number(val("b-grace") || 0),
+    };
+    const cid = secretVal("f-cid"), ckey = secretVal("f-ckey"), refresh = secretVal("f-refresh"), wh = secretVal("f-wh");
+    if (cid !== undefined) payload.fireClientId = cid;
+    if (ckey !== undefined) payload.fireClientKey = ckey;
+    if (refresh !== undefined) payload.fireRefreshToken = refresh;
+    if (wh !== undefined) payload.fireWebhookPrivateToken = wh;
+    payload.fireWebhookKid = val("f-kid") || null;
+    payload.fireCollectionIcan = val("f-ican") ? Number(val("f-ican")) : null;
+    try {
+      await api("/billing/config", { method: "PUT", body: JSON.stringify(payload) });
+      ok.hidden = false;
+      setTimeout(render, 600);
+    } catch (e2) {
+      err.textContent = e2.message; err.hidden = false;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById("billing-verify").addEventListener("click", async () => {
+    err.hidden = true; ok.hidden = true;
+    try {
+      const r = await api("/billing/config/verify-fire", { method: "POST" });
+      ok.textContent = `Connected — Fire business ID ${r.businessId}.`;
+      ok.hidden = false;
+      setTimeout(render, 900);
+    } catch (e2) {
+      err.textContent = e2.message; err.hidden = false;
+    }
+  });
 }
 
 async function auditView() {

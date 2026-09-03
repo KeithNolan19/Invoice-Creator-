@@ -8,6 +8,8 @@ import { errorHandler, notFound } from "./errors.ts";
 import { LoginRateLimiter } from "./rate-limit.ts";
 import { adminRoutes } from "../modules/admin/admin.routes.ts";
 import { authRoutes } from "../modules/auth/auth.routes.ts";
+import { billingAdminRoutes } from "../modules/billing/billing.admin.routes.ts";
+import { webhookRoutes } from "../modules/billing/webhook.routes.ts";
 import { customerRoutes } from "../modules/customers/customers.routes.ts";
 import { dashboardRoutes } from "../modules/dashboard/dashboard.routes.ts";
 import { invoiceRoutes } from "../modules/invoices/invoices.routes.ts";
@@ -29,6 +31,11 @@ export function createApp(db: Db, options: AppOptions = {}): Express {
   app.disable("x-powered-by");
   // Behind a reverse proxy in production so `req.ip` reflects the real client.
   app.set("trust proxy", config.isProduction ? 1 : false);
+
+  // Inbound provider webhooks need the raw body for signature verification, so
+  // they mount before the JSON parser and bring their own text parser.
+  app.use("/api/webhooks", webhookRoutes(db));
+
   app.use(express.json({ limit: "100kb" }));
 
   const rateLimiter =
@@ -55,6 +62,8 @@ export function createApp(db: Db, options: AppOptions = {}): Express {
   app.use("/api/customers", customerRoutes(db));
   app.use("/api/settings", settingsRoutes(db));
   app.use("/api/invoices", invoiceRoutes(db));
+  // More specific admin prefix first so it doesn't fall through the /api/admin router.
+  app.use("/api/admin/billing", billingAdminRoutes(db));
   app.use("/api/admin", adminRoutes(db));
 
   // Static single-page apps. Both are plain HTML/CSS/JS that call /api/* with a

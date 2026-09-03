@@ -124,11 +124,13 @@ fi
 if [ -f "$APP_ENV" ]; then
   APP_PW=$(sed -n 's#.*//invoice_app_login:\([^@]*\)@.*#\1#p' "$APP_ENV")
   JWT_SECRET=$(sed -n 's#^JWT_SECRET=##p' "$APP_ENV")
+  ENC_KEY=$(sed -n 's#^APP_ENCRYPTION_KEY=##p' "$APP_ENV")
 else
   APP_PW=$(openssl rand -hex 24)
   JWT_SECRET=$("$NODE_BIN" -e "console.log(require('crypto').randomBytes(48).toString('base64url'))")
+  ENC_KEY=$("$NODE_BIN" -e "console.log(require('crypto').randomBytes(32).toString('base64'))")
 fi
-[ -n "$OWNER_PW" ] && [ -n "$APP_PW" ] && [ -n "$JWT_SECRET" ] || die "could not resolve secrets"
+[ -n "$OWNER_PW" ] && [ -n "$APP_PW" ] && [ -n "$JWT_SECRET" ] && [ -n "$ENC_KEY" ] || die "could not resolve secrets"
 
 if [ ! -f "$ADMIN_ENV" ]; then
   cat > "$ADMIN_ENV" <<EOF
@@ -144,10 +146,16 @@ PORT=3000
 DATABASE_URL=postgres://invoice_app_login:${APP_PW}@localhost:5432/invoice_creator
 JWT_SECRET=${JWT_SECRET}
 JWT_EXPIRES_IN=30m
+APP_ENCRYPTION_KEY=${ENC_KEY}
 LOGIN_MAX_PER_IDENTITY=8
 LOGIN_MAX_PER_IP=30
 LOGIN_WINDOW_MS=900000
 EOF
+fi
+# Back-fill APP_ENCRYPTION_KEY into an env file written by an earlier version.
+if [ -f "$APP_ENV" ] && ! grep -q '^APP_ENCRYPTION_KEY=' "$APP_ENV"; then
+  echo "APP_ENCRYPTION_KEY=${ENC_KEY}" >> "$APP_ENV"
+  echo "    added APP_ENCRYPTION_KEY to $APP_ENV"
 fi
 chown "$APP_USER:$APP_USER" "$APP_ENV"; chmod 640 "$APP_ENV"
 
