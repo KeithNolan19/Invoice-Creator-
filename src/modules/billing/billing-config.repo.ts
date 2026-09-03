@@ -196,6 +196,27 @@ export async function recordFireVerification(
   );
 }
 
+/** Just the API auth credentials — enough to mint an access token / verify. */
+export async function getFireAuthCredentials(q: Queryable): Promise<FireCredentials | null> {
+  const { rows } = await q.query<{
+    fire_client_id_ciphertext: Buffer | null;
+    fire_client_key_ciphertext: Buffer | null;
+    fire_refresh_token_ciphertext: Buffer | null;
+  }>(
+    `SELECT fire_client_id_ciphertext, fire_client_key_ciphertext, fire_refresh_token_ciphertext
+       FROM platform_billing_config WHERE id = 1`,
+  );
+  const r = rows[0];
+  if (!r || !r.fire_client_id_ciphertext || !r.fire_client_key_ciphertext || !r.fire_refresh_token_ciphertext) {
+    return null;
+  }
+  return {
+    clientId: decryptSecret(toBuffer(r.fire_client_id_ciphertext)),
+    clientKey: decryptSecret(toBuffer(r.fire_client_key_ciphertext)),
+    refreshToken: decryptSecret(toBuffer(r.fire_refresh_token_ciphertext)),
+  };
+}
+
 export interface FirePlatformConfig extends FireCredentials {
   webhookPrivateToken: string;
   webhookKid: string | null;

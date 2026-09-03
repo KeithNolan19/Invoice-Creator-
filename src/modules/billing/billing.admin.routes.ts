@@ -8,7 +8,7 @@ import {
   type BillingConfigPatch,
   type FireCredentialsPatch,
   getBillingConfigSafe,
-  getFirePlatformConfig,
+  getFireAuthCredentials,
   recordFireVerification,
   setFireCredentials,
   updateBillingConfigSafe,
@@ -89,9 +89,9 @@ export function billingAdminRoutes(db: Db): Router {
   // Verify the stored Fire credentials actually authenticate.
   router.post("/config/verify-fire", async (req, res) => {
     const principal = requireAuth(req);
-    const creds = await db.withContext(principal, (q) => getFirePlatformConfig(q));
+    const creds = await db.withContext(principal, (q) => getFireAuthCredentials(q));
     if (!creds) {
-      res.status(400).json({ error: { code: "not_configured", message: "Fire.com credentials are incomplete" } });
+      res.status(400).json({ error: { code: "not_configured", message: "Fire.com API credentials are incomplete" } });
       return;
     }
     try {
