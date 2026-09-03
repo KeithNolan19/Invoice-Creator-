@@ -1,0 +1,27 @@
+# LOCAL DEV ONLY Postgres for `npm run dev` (tests use in-process PGlite).
+# The throwaway postgres/postgres superuser here is a dev convenience — for
+# local dev, point both DATABASE_URL and DATABASE_ADMIN_URL in .env at it
+# (migrations create the invoice_* roles). Production uses the least-privilege
+# role setup in docs/DEPLOYMENT.md, never this.
+#   docker compose up -d
+#   cp .env.example .env    # then edit the connection strings
+#   npm run migrate && npm run seed && npm run dev
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: invoice_creator
+    ports:
+      - "5432:5432"
+    volumes:
+      - invoice_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  invoice_pg:

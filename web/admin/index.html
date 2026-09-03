@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Control Centre · Invoice Creator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=Inter:wght@400;450;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Login gate -->
+  <section id="gate" class="gate" hidden>
+    <form id="login-form" class="gate-card">
+      <p class="wordmark"><b>Invoice Creator</b> <span>Admin Control Centre</span></p>
+      <h1>Sign in</h1>
+      <p class="lede">Platform administrators only.</p>
+      <div class="field">
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="username" required>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="current-password" required>
+      </div>
+      <p id="login-error" class="error" hidden></p>
+      <button type="submit">Sign in</button>
+    </form>
+  </section>
+
+  <!-- App shell -->
+  <div id="app" class="shell" hidden>
+    <aside class="sidebar">
+      <p class="wordmark"><b>Invoice Creator</b> <span>Admin</span></p>
+      <nav>
+        <a href="#/" data-nav="dashboard">Dashboard</a>
+        <a href="#/tenants" data-nav="tenants">Tenants</a>
+        <a href="#/audit" data-nav="audit">Audit log</a>
+      </nav>
+      <div class="sidebar-foot">
+        <span id="who"></span>
+        <button id="signout" class="link">Sign out</button>
+      </div>
+    </aside>
+    <main id="view" class="view" aria-live="polite"></main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

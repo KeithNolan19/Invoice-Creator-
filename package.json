@@ -1,0 +1,36 @@
+{
+  "name": "invoice-creator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Invoice Creator backend — tenants, users, authentication, tenant isolation.",
+  "scripts": {
+    "dev": "node --import tsx/esm src/server.ts",
+    "start": "node --import tsx/esm src/server.ts",
+    "typecheck": "tsc --noEmit",
+    "migrate": "node --import tsx/esm src/db/migrate-cli.ts",
+    "seed": "node --import tsx/esm src/db/seed-cli.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "dotenv": "^16.4.7",
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.13.1",
+    "tsx": "^4.19.2",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "@types/express": "^5.0.0",
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/node": "^22.10.5",
+    "@types/pg": "^8.11.10",
+    "@types/supertest": "^6.0.2",
+    "supertest": "^7.0.0",
+    "typescript": "^5.7.3",
+    "vitest": "^4.1.11"
+  }
+}
