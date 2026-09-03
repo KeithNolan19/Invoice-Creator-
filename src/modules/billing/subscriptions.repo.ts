@@ -37,8 +37,8 @@ const SELECT = `
          p.max_users AS plan_max_users, p.base_interval AS plan_base_interval,
          p.reminder_lead_minutes AS plan_reminder_lead_minutes, p.is_test AS plan_is_test,
          s.billing_interval, s.amount_cents, s.currency,
-         s.status, s.current_period_start, s.current_period_end, s.renewal_date,
-         s.last_renewal_generated_for, s.cancel_at_period_end, s.created_at
+         s.status, s.current_period_start::text AS current_period_start, s.current_period_end::text AS current_period_end, s.renewal_date::text AS renewal_date,
+         s.last_renewal_generated_for::text AS last_renewal_generated_for, s.cancel_at_period_end, s.created_at
     FROM tenant_subscriptions s
     JOIN subscription_plans p ON p.id = s.plan_id
     JOIN tenants t ON t.id = s.tenant_id

@@ -28,7 +28,7 @@ export interface PlatformInvoiceRow {
 
 const SELECT = `
   SELECT i.id, i.tenant_id, t.name AS tenant_name, i.number, i.subscription_id, i.kind,
-         i.period_start, i.period_end, i.issue_date, i.due_date, i.description, i.currency,
+         i.period_start::text AS period_start, i.period_end::text AS period_end, i.issue_date::text AS issue_date, i.due_date::text AS due_date, i.description, i.currency,
          i.amount_cents, i.status, i.payment_provider, i.payment_reference, i.fire_payment_code,
          i.hosted_payment_url, i.paid_at, i.paid_amount_cents, i.paid_currency, i.created_at
     FROM platform_invoices i

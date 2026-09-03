@@ -28,7 +28,7 @@ const COLUMNS_WITH_SUB = `
   t.id, t.name, t.slug, t.status, t.suspension_reason, t.suspended_at,
   t.reactivated_at, t.reactivation_note, t.created_at,
   p.name AS plan_name, p.code AS plan_code, s.billing_interval,
-  s.renewal_date, s.status AS subscription_status`;
+  s.renewal_date::text AS renewal_date, s.status AS subscription_status`;
 
 export async function listTenants(q: Queryable): Promise<TenantRow[]> {
   const { rows } = await q.query<TenantRow>(
