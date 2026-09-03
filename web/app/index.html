@@ -12,19 +12,9 @@
 <body>
   <div id="app" class="shell" hidden>
     <header class="topbar">
-      <p class="wordmark"><b>Invoice Creator</b></p>
       <button type="button" class="menu-btn" id="nav-toggle" aria-expanded="false" aria-controls="sidebar">Menu</button>
-    </header>
-
-    <aside class="sidebar" id="sidebar">
-      <p class="wordmark"><b>Invoice Creator</b></p>
-      <nav id="nav">
-        <a href="/app/dashboard" data-nav="dashboard">Dashboard</a>
-        <a href="/app/invoices" data-nav="invoices">Invoices</a>
-        <a href="/app/customers" data-nav="customers">Customers</a>
-        <a href="/app/settings/business" data-nav="settings">Settings</a>
-      </nav>
-      <div class="sidebar-foot">
+      <p class="wordmark topbar-mark"><b>Invoice Creator</b></p>
+      <div class="account-wrap">
         <button type="button" id="account-btn" class="account-btn" aria-haspopup="true" aria-expanded="false" aria-controls="account-menu">
           <span class="avatar" id="avatar" aria-hidden="true">··</span>
           <span class="sr-only">Account menu</span>
@@ -36,6 +26,16 @@
           <button type="button" id="signout" class="link" role="menuitem">Sign out</button>
         </div>
       </div>
+    </header>
+
+    <aside class="sidebar" id="sidebar">
+      <p class="wordmark"><b>Invoice Creator</b></p>
+      <nav id="nav">
+        <a href="/app/dashboard" data-nav="dashboard">Dashboard</a>
+        <a href="/app/invoices" data-nav="invoices">Invoices</a>
+        <a href="/app/customers" data-nav="customers">Customers</a>
+        <a href="/app/settings/business" data-nav="settings">Settings</a>
+      </nav>
     </aside>
 
     <main id="view" class="view" aria-live="polite"></main>
