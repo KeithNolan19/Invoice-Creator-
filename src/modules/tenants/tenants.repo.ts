@@ -12,10 +12,23 @@ export interface TenantRow {
   reactivated_at: string | null;
   reactivation_note: string | null;
   created_at: string;
+  // Present on the admin list (subscription join); undefined elsewhere.
+  plan_name?: string | null;
+  plan_code?: string | null;
+  billing_interval?: string | null;
+  renewal_date?: string | null;
+  subscription_status?: string | null;
 }
 
 const COLUMNS =
   "id, name, slug, status, suspension_reason, suspended_at, reactivated_at, reactivation_note, created_at";
+
+/** Adds the subscription join — for the admin tenant list. */
+const COLUMNS_WITH_SUB = `
+  t.id, t.name, t.slug, t.status, t.suspension_reason, t.suspended_at,
+  t.reactivated_at, t.reactivation_note, t.created_at,
+  p.name AS plan_name, p.code AS plan_code, s.billing_interval,
+  s.renewal_date, s.status AS subscription_status`;
 
 export async function listTenants(q: Queryable): Promise<TenantRow[]> {
   const { rows } = await q.query<TenantRow>(
@@ -38,15 +51,20 @@ export async function listTenantsFiltered(
   const params: unknown[] = [];
   if (filter.search) {
     params.push(`%${filter.search.trim()}%`);
-    where.push(`(name ILIKE $${params.length} OR slug ILIKE $${params.length})`);
+    where.push(`(t.name ILIKE $${params.length} OR t.slug ILIKE $${params.length})`);
   }
   if (filter.status) {
     params.push(filter.status);
-    where.push(`status = $${params.length}`);
+    where.push(`t.status = $${params.length}`);
   }
   const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const { rows } = await q.query<TenantRow>(
-    `SELECT ${COLUMNS} FROM tenants ${clause} ORDER BY name ASC`,
+    `SELECT ${COLUMNS_WITH_SUB}
+       FROM tenants t
+       LEFT JOIN tenant_subscriptions s ON s.tenant_id = t.id
+       LEFT JOIN subscription_plans p ON p.id = s.plan_id
+       ${clause}
+      ORDER BY t.name ASC`,
     params,
   );
   return rows;
@@ -116,5 +134,18 @@ export function serializeTenant(row: TenantRow) {
     reactivatedAt: row.reactivated_at,
     reactivationNote: row.reactivation_note,
     createdAt: row.created_at,
+    ...(row.plan_code !== undefined
+      ? {
+          subscription: row.plan_code
+            ? {
+                planCode: row.plan_code,
+                planName: row.plan_name,
+                billingInterval: row.billing_interval,
+                renewalDate: row.renewal_date,
+                status: row.subscription_status,
+              }
+            : null,
+        }
+      : {}),
   };
 }

@@ -24,6 +24,8 @@ import {
   listUsers,
   serializeUser,
 } from "../users/users.repo.ts";
+import { generateSubscriptionInvoice } from "../../billing/generate-invoice.ts";
+import { serializeSubscription, setSubscription } from "../billing/subscriptions.repo.ts";
 import { getDashboardStats, serializeDashboard, slugify } from "./admin.repo.ts";
 import { listAuditLogs, recordAudit, serializeAuditLog } from "./audit.ts";
 
@@ -33,6 +35,10 @@ const createTenantSchema = z
   .object({
     name: z.string().trim().min(1).max(120),
     slug: z.string().trim().min(1).max(48).regex(/^[a-z0-9-]+$/).optional(),
+    // Optional: put the tenant straight onto a plan. Day one = creation date,
+    // and the first invoice is generated immediately.
+    planId: z.string().uuid().optional(),
+    billingInterval: z.enum(["day", "month", "year"]).optional(),
   })
   .strict();
 
@@ -91,7 +97,7 @@ export function adminRoutes(db: Db): Router {
     if (!slug) throw badRequest("Could not derive a slug from the name; provide one explicitly");
 
     try {
-      const tenant = await db.withContext(principal, async (q) => {
+      const result = await db.withContext(principal, async (q) => {
         const created = await createTenant(q, { name: body.name, slug });
         // Every tenant gets exactly one settings row (matches migration 008's
         // backfill for pre-existing tenants).
@@ -105,9 +111,42 @@ export function adminRoutes(db: Db): Router {
           tenantId: created.id,
           metadata: { name: created.name, slug: created.slug },
         });
-        return created;
+
+        // Optional: subscription + day-one invoice.
+        let subscription = null;
+        let firstInvoice = null;
+        if (body.planId) {
+          const sub = await setSubscription(q, {
+            tenantId: created.id,
+            planId: body.planId,
+            billingInterval: body.billingInterval ?? "month",
+            periodStart: new Date(),
+            createdBy: principal.userId,
+          });
+          await recordAudit(q, {
+            actorUserId: principal.userId,
+            action: "billing.subscription_set",
+            tenantId: created.id,
+            metadata: { planId: body.planId, interval: sub.billing_interval, amountCents: Number(sub.amount_cents) },
+          });
+          subscription = serializeSubscription(sub);
+          const gen = await generateSubscriptionInvoice(q, {
+            subscription: sub,
+            periodStart: sub.current_period_start,
+            periodEnd: sub.current_period_end,
+            dueDate: sub.current_period_start,
+            createdBy: principal.userId,
+            source: "tenant_create",
+          });
+          firstInvoice = gen ? { id: gen.invoice.id, number: gen.invoice.number, hostedUrl: gen.hostedUrl } : null;
+        }
+        return { created, subscription, firstInvoice };
       });
-      res.status(201).json({ tenant: serializeTenant(tenant) });
+      res.status(201).json({
+        tenant: serializeTenant(result.created),
+        subscription: result.subscription,
+        firstInvoice: result.firstInvoice,
+      });
     } catch (err) {
       if (typeof err === "object" && err !== null && (err as { code?: string }).code === "23505") {
         throw conflict(`A tenant with slug "${slug}" already exists`);

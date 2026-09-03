@@ -158,6 +158,32 @@ describe("admin billing routes — access + a full loop over HTTP", () => {
     expect((await h.api.get("/api/admin/billing/summary")).status).toBe(401);
   });
 
+  it("creating a tenant with a package starts the subscription today and generates the day-one invoice", async () => {
+    const plans = (await h.api.get("/api/admin/billing/plans").set(...auth(h.tokens.admin))).body.plans;
+    const team = plans.find((p: any) => p.code === "team");
+
+    const created = await h.api
+      .post("/api/admin/tenants")
+      .set(...auth(h.tokens.admin))
+      .send({ name: "Day One Co", planId: team.id, billingInterval: "month" });
+    expect(created.status).toBe(201);
+    expect(created.body.subscription.plan.code).toBe("team");
+    expect(created.body.firstInvoice).not.toBeNull();
+
+    const detail = await h.api
+      .get(`/api/admin/billing/tenants/${created.body.tenant.id}`)
+      .set(...auth(h.tokens.admin));
+    expect(detail.body.invoices).toHaveLength(1);
+    expect(detail.body.invoices[0].number).toBe(created.body.firstInvoice.number);
+    // due today (period start = creation date)
+    expect(detail.body.invoices[0].dueDate).toBe(new Date().toISOString().slice(0, 10));
+
+    // it also shows on the tenant list with plan + renewal
+    const list = await h.api.get("/api/admin/tenants?search=Day One").set(...auth(h.tokens.admin));
+    expect(list.body.tenants[0].subscription.planCode).toBe("team");
+    expect(list.body.tenants[0].subscription.renewalDate).toBeTruthy();
+  });
+
   it("assign the test plan, run the tick, record a payment, period advances", async () => {
     const plans = (await h.api.get("/api/admin/billing/plans").set(...auth(h.tokens.admin))).body.plans;
     const testPlan = plans.find((p: any) => p.code === "test-daily");

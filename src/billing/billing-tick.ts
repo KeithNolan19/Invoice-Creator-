@@ -1,18 +1,13 @@
-import { config } from "../config.ts";
 import type { Db, Queryable } from "../db/types.ts";
 import { withSystemContext } from "../db/system-context.ts";
 import { FireClient } from "../integrations/fire/index.ts";
 import { recordAudit } from "../modules/admin/audit.ts";
 import { getBillingConfigSafe, getFireAuthCredentials } from "../modules/billing/billing-config.repo.ts";
 import { createNotification } from "../modules/billing/notifications.repo.ts";
-import {
-  allocatePlatformInvoiceNumber,
-  insertPlatformInvoice,
-  listPlatformInvoices,
-  setPlatformInvoiceStatus,
-} from "../modules/billing/platform-invoices.repo.ts";
+import { listPlatformInvoices } from "../modules/billing/platform-invoices.repo.ts";
 import { listActiveSubscriptions, markRenewalGenerated } from "../modules/billing/subscriptions.repo.ts";
 import { applyConfirmedPayment } from "./apply-payment.ts";
+import { generateSubscriptionInvoice } from "./generate-invoice.ts";
 import { isInvoiceOverdue } from "./state.ts";
 import { periodEnd } from "./pricing.ts";
 
@@ -58,72 +53,15 @@ async function tick(db: Db, q: Queryable, now: Date): Promise<TickResult> {
       const withinLead = now.getTime() >= renewalDate.getTime() - leadMs;
       if (!withinLead || s.last_renewal_generated_for === s.renewal_date) continue;
 
-      const pStart = renewalDate;
-      const pEnd = periodEnd(pStart, s.billing_interval);
-      const number = await allocatePlatformInvoiceNumber(q);
-      const inv = await insertPlatformInvoice(q, {
-        tenantId: s.tenant_id,
-        number,
-        subscriptionId: s.id,
-        kind: "subscription",
-        periodStart: iso(pStart),
-        periodEnd: iso(pEnd),
+      const gen = await generateSubscriptionInvoice(q, {
+        subscription: s,
+        periodStart: s.renewal_date,
+        periodEnd: iso(periodEnd(renewalDate, s.billing_interval)),
         dueDate: s.renewal_date,
-        description: `${s.plan_name} — ${iso(pStart)}`,
-        currency: s.currency,
-        amountCents: Number(s.amount_cents),
+        source: "scheduler",
       });
       await markRenewalGenerated(q, s.id, s.renewal_date);
-      if (!inv) continue; // already existed (idempotent)
-
-      await setPlatformInvoiceStatus(q, inv.id, "issued");
-
-      // Create the Fire payment request so the client has a pay link + QR.
-      if (fire && cfg.fireCollectionIcan) {
-        try {
-          const created = await fire.createPaymentRequest({
-            amountMinor: Number(s.amount_cents),
-            currency: (s.currency as "EUR" | "GBP") ?? "EUR",
-            myRef: number,
-            description: number.slice(0, 18),
-            icanTo: Number(cfg.fireCollectionIcan),
-          });
-          await setPlatformInvoiceStatus(q, inv.id, "payment_pending", {
-            paymentProvider: "fire",
-            paymentReference: number,
-            firePaymentCode: created.code,
-            hostedPaymentUrl: `${config.fire.paymentsBaseUrl}/${created.code}`,
-            qrGeneratedAt: new Date().toISOString(),
-          });
-        } catch (err) {
-          result.errors.push(`fire payment request for ${number}: ${(err as Error).message}`);
-          await createNotification(q, {
-            type: "provider_error",
-            tenantId: s.tenant_id,
-            invoiceId: inv.id,
-            title: `Fire.com error preparing ${number}`,
-            body: (err as Error).message,
-            severity: "attention",
-            dedupeKey: `provider_err:${number}`,
-          });
-        }
-      }
-
-      await createNotification(q, {
-        type: "renewal_invoice_generated",
-        tenantId: s.tenant_id,
-        invoiceId: inv.id,
-        title: `Renewal invoice ${number} — ${s.tenant_name}`,
-        body: `${s.currency} ${(Number(s.amount_cents) / 100).toFixed(2)}, due ${s.renewal_date}`,
-        severity: "info",
-      });
-      await recordAudit(q, {
-        actorUserId: null,
-        action: "billing.renewal_generated",
-        tenantId: s.tenant_id,
-        metadata: { source: "scheduler", invoice: number, periodStart: iso(pStart) },
-      });
-      result.renewalsGenerated++;
+      if (gen) result.renewalsGenerated++;
     } catch (err) {
       result.errors.push(`renewal ${s.tenant_name}: ${(err as Error).message}`);
     }

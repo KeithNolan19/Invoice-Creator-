@@ -237,15 +237,17 @@ async function tenantsView() {
       </select>
     </div>
     <table>
-      <thead><tr><th>Name</th><th>Slug</th><th>Status</th><th>Created</th></tr></thead>
+      <thead><tr><th>Name</th><th>Slug</th><th>Status</th><th>Plan</th><th>Renews</th><th>Created</th></tr></thead>
       <tbody>
         ${tenants.map((t) => `
           <tr class="clickable" data-id="${esc(t.id)}">
             <td>${esc(t.name)}</td>
             <td><span class="mono">${esc(t.slug)}</span></td>
             <td>${statusPill(t.status)}</td>
+            <td>${t.subscription ? esc(t.subscription.planName) + (t.subscription.billingInterval ? ` <span class="muted">(${esc(t.subscription.billingInterval)})</span>` : "") : '<span class="muted">—</span>'}</td>
+            <td>${t.subscription?.renewalDate ? esc(t.subscription.renewalDate) : '<span class="muted">—</span>'}</td>
             <td>${esc(fmtDay(t.createdAt))}</td>
-          </tr>`).join("") || `<tr><td colspan="4" class="muted">No tenants match.</td></tr>`}
+          </tr>`).join("") || `<tr><td colspan="6" class="muted">No tenants match.</td></tr>`}
       </tbody>
     </table>`;
 
@@ -264,8 +266,11 @@ async function tenantsView() {
   document.getElementById("new-tenant-btn").addEventListener("click", showNewTenantForm);
 }
 
-function showNewTenantForm() {
+async function showNewTenantForm() {
   const slot = document.getElementById("new-tenant-slot");
+  let plans = [];
+  try { plans = (await api("/plans", { base: "/api/admin/billing" })).plans.filter((p) => p.active); } catch { /* plans optional */ }
+
   slot.innerHTML = `
     <form class="inline-form" id="new-tenant-form">
       <h3>New tenant</h3>
@@ -273,21 +278,40 @@ function showNewTenantForm() {
         <div class="field"><label for="nt-name">Company name</label><input id="nt-name" required></div>
         <div class="field"><label for="nt-slug">Slug (optional)</label><input id="nt-slug" placeholder="auto from name" pattern="[a-z0-9-]+"></div>
       </div>
+      <div class="row">
+        <div class="field"><label for="nt-plan">Package</label>
+          <select id="nt-plan">
+            <option value="">No package yet</option>
+            ${plans.map((p) => `<option value="${esc(p.id)}" data-interval="${esc(p.baseInterval)}">${esc(p.name)} · ${money(p.baseAmountCents, p.currency)}/${esc(p.baseInterval)}${p.isTest ? " · TEST" : ""}</option>`).join("")}
+          </select></div>
+        <div class="field"><label for="nt-interval">Billing</label>
+          <select id="nt-interval"><option value="day">day</option><option value="month" selected>month</option><option value="year">year</option></select></div>
+      </div>
+      <p class="muted" style="font-size:12px">Picking a package starts the subscription today and generates the first invoice now.</p>
       <p class="error" id="nt-error" hidden></p>
       <div class="actions"><button type="submit">Create tenant</button><button type="button" class="ghost" id="nt-cancel">Cancel</button></div>
     </form>`;
-  document.getElementById("nt-cancel").addEventListener("click", () => { slot.innerHTML = ""; });
-  document.getElementById("new-tenant-form").addEventListener("submit", async (e) => {
+  const g = (id) => document.getElementById(id);
+  g("nt-cancel").addEventListener("click", () => { slot.innerHTML = ""; });
+  g("nt-plan").addEventListener("change", () => {
+    const opt = g("nt-plan").selectedOptions[0];
+    if (opt && opt.dataset.interval === "day") g("nt-interval").value = "day";
+  });
+  g("new-tenant-form").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const err = document.getElementById("nt-error");
+    const err = g("nt-error");
     err.hidden = true;
-    const name = document.getElementById("nt-name").value.trim();
-    const slug = document.getElementById("nt-slug").value.trim();
+    const name = g("nt-name").value.trim();
+    const slug = g("nt-slug").value.trim();
+    const planId = g("nt-plan").value;
+    const payload = { name };
+    if (slug) payload.slug = slug;
+    if (planId) { payload.planId = planId; payload.billingInterval = g("nt-interval").value; }
     try {
-      const { tenant } = await api("/tenants", {
-        method: "POST",
-        body: JSON.stringify(slug ? { name, slug } : { name }),
-      });
+      const { tenant, firstInvoice } = await api("/tenants", { method: "POST", body: JSON.stringify(payload) });
+      if (firstInvoice) {
+        alert(`Tenant created.\nFirst invoice: ${firstInvoice.number}` + (firstInvoice.hostedUrl ? `\nPay link: ${firstInvoice.hostedUrl}` : ""));
+      }
       navigate(`/tenants/${tenant.id}`);
     } catch (e2) {
       err.textContent = e2.message;

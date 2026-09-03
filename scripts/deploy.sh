@@ -25,6 +25,8 @@ git config --global --get-all safe.directory 2>/dev/null | grep -qxF "$APP_DIR" 
   git config --global --add safe.directory "$APP_DIR"
 
 echo "==> Fetching latest main"
+# Clear any stale ref locks from an interrupted fetch (seen on this box).
+find "$APP_DIR/.git" -name '*.lock' -delete 2>/dev/null || true
 git fetch --all --prune
 git reset --hard origin/main
 echo "    now at $(git rev-parse --short HEAD) - $(git log -1 --pretty=%s)"
