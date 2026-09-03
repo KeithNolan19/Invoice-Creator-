@@ -121,6 +121,15 @@ describe("open → reply → close flow", () => {
     ).toBe(201);
   });
 
+  it("a closed ticket never counts toward the admin badge, even with an unseen message", async () => {
+    const t = await openTicket(h.tokens.alice, "Quick question", "is this on?");
+    // admin closes straight from the list without opening the thread
+    await h.api.post(`/api/admin/support/tickets/${t.id}/close`).set(...auth(h.tokens.admin));
+
+    const sum = await h.api.get("/api/admin/support/summary").set(...auth(h.tokens.admin));
+    expect(sum.body).toMatchObject({ openCount: 0, unreadCount: 0, ticketsWithUnread: 0 });
+  });
+
   it("rejects empty / oversized input", async () => {
     for (const b of [{ subject: "", message: "x" }, { subject: "x", message: "" }, { subject: "x", message: "x", extra: 1 }]) {
       expect((await h.api.post("/api/support/tickets").set(...auth(h.tokens.alice)).send(b)).status).toBe(400);

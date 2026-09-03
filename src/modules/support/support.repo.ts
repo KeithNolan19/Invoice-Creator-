@@ -158,7 +158,8 @@ export async function setTicketStatus(
   const { rows } =
     status === "closed"
       ? await q.query<{ id: string }>(
-          `UPDATE support_tickets SET status = 'closed', closed_by = $2, closed_at = now()
+          `UPDATE support_tickets SET status = 'closed', closed_by = $2, closed_at = now(),
+                  admin_last_read_at = now()
             WHERE id = $1 AND status = 'open' RETURNING id`,
           [ticketId, actorUserId],
         )
@@ -199,8 +200,8 @@ export async function supportSummaryAdmin(q: Queryable): Promise<{
        FROM support_tickets t
      )
      SELECT count(*) FILTER (WHERE status = 'open')::int AS open_count,
-            COALESCE(sum(unread), 0)::int AS unread_count,
-            count(*) FILTER (WHERE unread > 0)::int AS tickets_with_unread
+            COALESCE(sum(unread) FILTER (WHERE status = 'open'), 0)::int AS unread_count,
+            count(*) FILTER (WHERE status = 'open' AND unread > 0)::int AS tickets_with_unread
        FROM per_ticket`,
   );
   return {

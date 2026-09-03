@@ -560,6 +560,7 @@ async function refreshSupportBadge() {
       badge.textContent = s.ticketsWithUnread;
       badge.hidden = false;
     } else {
+      badge.textContent = "";
       badge.hidden = true;
     }
   } catch { /* ignore */ }
@@ -804,7 +805,7 @@ async function refreshNotifBadge() {
   try {
     const { count } = await api("/notifications/unread-count", { base: "/api/admin" });
     if (count > 0) { badge.textContent = count > 99 ? "99+" : count; badge.hidden = false; }
-    else badge.hidden = true;
+    else { badge.textContent = ""; badge.hidden = true; }
   } catch { /* ignore */ }
 }
 

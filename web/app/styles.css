@@ -173,7 +173,8 @@ button.link:hover { color: var(--ink); background: none; }
   font-size: 12px; font-weight: 600; letter-spacing: 0.02em;
 }
 /* Keep the [hidden] attribute authoritative even though these set display. */
-.account-menu[hidden], .support-panel[hidden], .support-btn[hidden] { display: none !important; }
+.account-menu[hidden], .support-panel[hidden], .support-btn[hidden],
+.support-badge[hidden] { display: none !important; }
 
 .account-menu {
   position: absolute; right: 0; top: calc(100% + 8px);
