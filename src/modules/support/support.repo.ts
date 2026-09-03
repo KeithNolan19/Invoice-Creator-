@@ -146,22 +146,27 @@ export async function markRead(q: Queryable, ticketId: string, side: "tenant" | 
   await q.query(`UPDATE support_tickets SET ${col} = now() WHERE id = $1`, [ticketId]);
 }
 
-/** Admin close / reopen. Returns null if the ticket is not visible. */
+/** Admin close / reopen. Returns null if the ticket is not visible or already in that state. */
 export async function setTicketStatus(
   q: Queryable,
   ticketId: string,
   status: TicketStatus,
   actorUserId: string,
 ): Promise<TicketRow | null> {
-  const { rows } = await q.query<{ id: string }>(
-    `UPDATE support_tickets
-        SET status = $2,
-            closed_by = CASE WHEN $2 = 'closed' THEN $3 ELSE NULL END,
-            closed_at = CASE WHEN $2 = 'closed' THEN now() ELSE NULL END
-      WHERE id = $1 AND status <> $2
-      RETURNING id`,
-    [ticketId, status, actorUserId],
-  );
+  // Two explicit statements — avoids a CASE over bind params, which PGlite's
+  // type inference stumbles on.
+  const { rows } =
+    status === "closed"
+      ? await q.query<{ id: string }>(
+          `UPDATE support_tickets SET status = 'closed', closed_by = $2, closed_at = now()
+            WHERE id = $1 AND status = 'open' RETURNING id`,
+          [ticketId, actorUserId],
+        )
+      : await q.query<{ id: string }>(
+          `UPDATE support_tickets SET status = 'open', closed_by = NULL, closed_at = NULL
+            WHERE id = $1 AND status = 'closed' RETURNING id`,
+          [ticketId],
+        );
   if (!rows[0]) return null;
   return getTicket(q, ticketId);
 }

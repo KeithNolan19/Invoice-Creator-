@@ -10,7 +10,10 @@ export default defineConfig({
     pool: "forks",
     isolate: false,
     fileParallelism: false,
-    testTimeout: 20_000,
-    hookTimeout: 30_000,
+    // Generous because the deploy target is a 512 MB droplet where PGlite runs
+    // through swap — migration-heavy files and createHarness hooks are slow
+    // there. On a normal machine everything finishes in a fraction of this.
+    testTimeout: 120_000,
+    hookTimeout: 180_000,
   },
 });

@@ -297,11 +297,13 @@ describe("admin UI is served statically", () => {
   });
 
   it("has a dedicated sign-in page and serves the shell for deep links", async () => {
+    expect((await h.api.get("/admin")).status).toBe(301); // bare -> /admin/
+
     const login = await h.api.get("/admin/login");
     expect(login.status).toBe(200);
     expect(login.text).toContain('id="login-form"');
 
-    for (const p of ["/admin", "/admin/dashboard", `/admin/tenants/${crypto.randomUUID()}`, "/admin/support"]) {
+    for (const p of ["/admin/", "/admin/dashboard", `/admin/tenants/${crypto.randomUUID()}`, "/admin/support"]) {
       const res = await h.api.get(p);
       expect(res.status, p).toBe(200);
       expect(res.text, p).toContain('data-nav="dashboard"');

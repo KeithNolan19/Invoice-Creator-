@@ -138,10 +138,11 @@ describe("Fire webhook endpoint", () => {
     const bad = await h.api.post("/api/webhooks/fire").set("Content-Type", "text/plain").send("not-a-jwt");
     expect(bad.status).toBe(401);
 
-    const token = jwt.sign([{ type: "PAYMENT_REQUEST_PAYMENT_RECEIVED", paymentUuid: "p1" }], "wh-private-secret", {
-      algorithm: "HS256",
-      keyid: "wh-public-kid",
-    });
+    const token = jwt.sign(
+      { events: [{ type: "PAYMENT_REQUEST_PAYMENT_RECEIVED", paymentUuid: "p1" }] },
+      "wh-private-secret",
+      { algorithm: "HS256", keyid: "wh-public-kid" },
+    );
     const ok = await h.api.post("/api/webhooks/fire").set("Content-Type", "application/jwt").send(token);
     expect(ok.status).toBe(200);
     expect(ok.body.received).toBe(1);

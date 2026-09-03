@@ -39,7 +39,9 @@ describe("the customer SPA is served statically", () => {
   });
 
   it("deep links under /app serve the SPA shell; missing assets 404", async () => {
-    for (const p of ["/app", "/app/", "/app/dashboard", "/app/customers", `/app/invoices/${crypto.randomUUID()}`]) {
+    // bare /app 301-redirects to /app/ (express.static); the rest serve the shell
+    expect((await h.api.get("/app")).status).toBe(301);
+    for (const p of ["/app/", "/app/dashboard", "/app/customers", `/app/invoices/${crypto.randomUUID()}`]) {
       const res = await h.api.get(p);
       expect(res.status, p).toBe(200);
       expect(res.text, p).toContain('data-nav="dashboard"');
