@@ -138,6 +138,8 @@ const routes = [
   { re: /^\/dashboard$/, view: dashboardView, nav: "dashboard" },
   { re: /^\/tenants$/, view: tenantsView, nav: "tenants" },
   { re: /^\/tenants\/([0-9a-f-]{36})$/, view: tenantDetailView, nav: "tenants" },
+  { re: /^\/data$/, view: dataView, nav: "data" },
+  { re: /^\/data\/([0-9a-f-]{36})$/, view: dataTenantView, nav: "data" },
   { re: /^\/billing$/, view: billingConfigView, nav: "billing" },
   { re: /^\/notifications$/, view: notificationsView, nav: "notifications" },
   { re: /^\/support$/, view: supportListView, nav: "support" },
@@ -910,6 +912,150 @@ async function auditView() {
           </tr>`).join("") || `<tr><td colspan="5" class="muted">No admin actions recorded yet.</td></tr>`}
       </tbody>
     </table>`;
+}
+
+/* ---------------- Data browser ---------------- */
+
+async function dataView() {
+  const { tenants, totals } = await api("/data/overview", { base: "/api/admin" });
+  view.innerHTML = `
+    <div class="view-head"><div><h1>Data</h1>
+      <p class="lede">Everything your tenants have created. Read-only.</p></div></div>
+
+    <div class="tiles" style="margin-bottom:22px">
+      ${tile(totals.customers, "Customers")}
+      ${tile(totals.invoices, "Invoices")}
+      ${tile(totals.line_items, "Line items")}
+      ${tile(totals.tickets, "Support tickets")}
+      ${tile(totals.platform_invoices, "Platform invoices")}
+      ${tile(totals.platform_payments, "Payments received")}
+    </div>
+
+    <table>
+      <thead><tr><th>Tenant</th><th>Plan</th><th>Status</th>
+        <th class="num">Users</th><th class="num">Customers</th><th class="num">Invoices</th>
+        <th class="num">Open tickets</th><th>Created</th></tr></thead>
+      <tbody>
+        ${tenants.map((t) => `
+          <tr class="clickable" data-id="${esc(t.id)}">
+            <td>${esc(t.name)} <span class="muted mono">${esc(t.slug)}</span></td>
+            <td>${t.plan ? esc(t.plan) : '<span class="muted">—</span>'}</td>
+            <td><span class="pill ${t.status === "active" ? "active" : "disabled"}">${esc(t.status)}</span></td>
+            <td class="num">${t.users}</td>
+            <td class="num">${t.customers}</td>
+            <td class="num">${t.invoices}</td>
+            <td class="num">${t.open_tickets || ""}</td>
+            <td>${esc(fmtDay(t.created_at))}</td>
+          </tr>`).join("")}
+      </tbody>
+    </table>`;
+  view.querySelectorAll("tr[data-id]").forEach((tr) =>
+    tr.addEventListener("click", () => navigate(`/data/${tr.dataset.id}`)));
+}
+
+function dl(pairs) {
+  const rows = pairs.filter(([, v]) => v != null && v !== "").map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join("");
+  return rows ? `<dl class="dl">${rows}</dl>` : `<p class="muted">Nothing set.</p>`;
+}
+
+async function dataTenantView(m) {
+  const d = await api(`/data/tenants/${m[1]}`, { base: "/api/admin" });
+  const t = d.tenant;
+  const addr = (o) => [o.address_line1, o.address_line2, o.city, o.region, o.postal_code, o.country]
+    .filter(Boolean).join(", ");
+
+  view.innerHTML = `
+    <a class="back" href="/admin/data">← Data</a>
+    <div class="view-head"><div><h1>${esc(t.name)}</h1>
+      <p class="lede"><span class="mono">${esc(t.slug)}</span> ·
+        <span class="pill ${t.status === "active" ? "active" : "disabled"}">${esc(t.status)}</span> ·
+        created ${esc(fmtDay(t.created_at))}</p></div></div>
+
+    <h2>Subscription</h2>
+    ${d.subscription ? dl([
+      ["Plan", esc(d.subscription.plan)],
+      ["Billing", `${money(d.subscription.amount_cents, d.subscription.currency)} / ${esc(d.subscription.billing_interval)}`],
+      ["Status", esc(d.subscription.status)],
+      ["Current period", `${esc(d.subscription.current_period_start)} → ${esc(d.subscription.current_period_end)}`],
+      ["Renews", esc(d.subscription.renewal_date)],
+    ]) : `<p class="muted">No subscription.</p>`}
+
+    <h2 style="margin-top:26px">Business settings</h2>
+    ${d.settings ? dl([
+      ["Business name", esc(d.settings.business_name)],
+      ["Contact", [d.settings.contact_email, d.settings.contact_phone].filter(Boolean).map(esc).join(" · ")],
+      ["Address", esc(addr(d.settings))],
+      ["Tax number", esc(d.settings.tax_number)],
+      ["Default currency", esc(d.settings.default_currency)],
+      ["Payment terms", `${esc(d.settings.default_due_days)} days`],
+      ["Invoice prefix", esc(d.settings.invoice_number_prefix)],
+    ]) : `<p class="muted">No settings row.</p>`}
+
+    <h2 style="margin-top:26px">Users <span class="muted">(${d.users.length})</span></h2>
+    <table>
+      <thead><tr><th>Email</th><th>Name</th><th>Role</th><th>Presence</th><th>Created</th></tr></thead>
+      <tbody>${d.users.map((u) => `
+        <tr>
+          <td class="mono">${esc(u.email)}</td>
+          <td>${esc(u.name)}</td>
+          <td>${u.tenant_role === "admin" ? '<span class="pill admin">admin</span>' : "member"}${u.disabled_at ? ' <span class="pill disabled">disabled</span>' : ""}</td>
+          <td>${presenceCell({ online: !u.disabled_at && u.last_seen_at && (Date.now() - new Date(u.last_seen_at).getTime() < 5 * 60_000), lastSeenAt: u.last_seen_at })}</td>
+          <td>${esc(fmtDay(u.created_at))}</td>
+        </tr>`).join("")}</tbody>
+    </table>
+
+    <h2 style="margin-top:26px">Customers <span class="muted">(${d.customers.length})</span></h2>
+    ${d.customers.length ? `<table>
+      <thead><tr><th>Name</th><th>Email</th><th>Location</th><th class="num">Invoices</th><th>Added</th></tr></thead>
+      <tbody>${d.customers.map((c) => `
+        <tr>
+          <td>${esc(c.name)}${c.archived_at ? ' <span class="pill disabled">archived</span>' : ""}</td>
+          <td class="mono">${esc(c.email || "—")}</td>
+          <td>${esc([c.city, c.country].filter(Boolean).join(", ") || "—")}</td>
+          <td class="num">${c.invoice_count}</td>
+          <td>${esc(fmtDay(c.created_at))}</td>
+        </tr>${c.notes ? `<tr><td colspan="5" class="muted" style="font-size:12px">${esc(c.notes)}</td></tr>` : ""}`).join("")}</tbody>
+    </table>` : `<p class="muted">No customers yet.</p>`}
+
+    <h2 style="margin-top:26px">Invoices <span class="muted">(${d.invoices.length})</span></h2>
+    ${d.invoices.length ? d.invoices.map((i) => `
+      <div class="card" style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">
+          <strong class="mono">${esc(i.number || "(draft)")}</strong>
+          <span>${money(i.total_cents ?? i.amount_cents, i.currency)}
+            <span class="pill ${i.payment_status === "paid" ? "active" : "disabled"}">${esc(i.payment_status)}</span>
+            <span class="pill">${esc(i.status)}</span></span>
+        </div>
+        <p class="muted" style="font-size:12px;margin-top:4px">
+          ${esc(i.customer_name || i.client_name || "—")} ·
+          issued ${esc(i.issued_on || "—")}${i.due_on ? ` · due ${esc(i.due_on)}` : ""}${i.paid_at ? ` · paid ${esc(fmtDay(i.paid_at))}` : ""}
+        </p>
+        ${i.lineItems.length ? `<table style="margin-top:8px">
+          <thead><tr><th>Description</th><th class="num">Qty</th><th class="num">Unit</th><th class="num">Line total</th></tr></thead>
+          <tbody>${i.lineItems.map((li) => `<tr>
+            <td>${esc(li.description)}</td>
+            <td class="num">${esc(li.quantity)}</td>
+            <td class="num">${money(li.unit_price_cents, i.currency)}</td>
+            <td class="num">${money(li.line_total_cents, i.currency)}</td>
+          </tr>`).join("")}</tbody>
+        </table>` : ""}
+      </div>`).join("") : `<p class="muted">No invoices yet.</p>`}
+
+    <h2 style="margin-top:26px">Support tickets <span class="muted">(${d.tickets.length})</span></h2>
+    ${d.tickets.length ? d.tickets.map((tk) => `
+      <div class="card" style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">
+          <strong>${esc(tk.subject)}</strong>
+          <span class="pill ${tk.status === "open" ? "active" : ""}">${esc(tk.status)}</span>
+        </div>
+        <p class="muted" style="font-size:12px">opened by ${esc(tk.opened_by_email || "—")} · ${esc(fmtDate(tk.last_message_at))}</p>
+        <div class="support-thread" style="margin-top:8px">
+          ${tk.messages.map((msg) => `<div class="msg ${msg.author_kind === "admin" ? "them" : "me"}">
+            <div class="msg-body">${esc(msg.body).replace(/\n/g, "<br>")}</div>
+            <div class="msg-meta">${msg.author_kind === "admin" ? "Support" : esc(msg.author_email || "Client")} · ${esc(fmtDate(msg.created_at))}</div>
+          </div>`).join("")}
+        </div>
+      </div>`).join("") : `<p class="muted">No tickets.</p>`}`;
 }
 
 /* ---------------- Boot ---------------- */

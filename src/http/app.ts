@@ -7,6 +7,7 @@ import type { Db } from "../db/types.ts";
 import { errorHandler, notFound } from "./errors.ts";
 import { LoginRateLimiter } from "./rate-limit.ts";
 import { adminRoutes } from "../modules/admin/admin.routes.ts";
+import { dataRoutes } from "../modules/admin/data.routes.ts";
 import { authRoutes } from "../modules/auth/auth.routes.ts";
 import { billingAdminRoutes } from "../modules/billing/billing.admin.routes.ts";
 import { billingClientRoutes } from "../modules/billing/billing.client.routes.ts";
@@ -69,6 +70,7 @@ export function createApp(db: Db, options: AppOptions = {}): Express {
   app.use("/api/support", supportRoutes(db));
   app.use("/api/billing", billingClientRoutes(db));
   // More specific admin prefixes first so they don't fall through the /api/admin router.
+  app.use("/api/admin/data", dataRoutes(db));
   app.use("/api/admin/billing", billingAdminRoutes(db));
   app.use("/api/admin/notifications", notificationsAdminRoutes(db));
   app.use("/api/admin/support", supportAdminRoutes(db));

@@ -43,6 +43,8 @@ const adminEndpoints = (): Endpoint[] => [
   { name: "POST /admin/users/:id/enable", method: "post", path: () => `/api/admin/users/${h.ids.users.bob}/enable` },
   { name: "GET /admin/users", method: "get", path: () => "/api/admin/users" },
   { name: "GET /admin/audit-logs", method: "get", path: () => "/api/admin/audit-logs" },
+  { name: "GET /admin/data/overview", method: "get", path: () => "/api/admin/data/overview" },
+  { name: "GET /admin/data/tenants/:id", method: "get", path: () => `/api/admin/data/tenants/${h.ids.tenants.acme}` },
 ];
 
 /** Normal authenticated endpoints. */
