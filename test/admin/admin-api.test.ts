@@ -284,12 +284,29 @@ describe("admin UI is served statically", () => {
     const page = await h.api.get("/admin/");
     expect(page.status).toBe(200);
     expect(page.text).toContain("Admin Control Centre");
+    expect(page.text).not.toContain('id="login-form"'); // the shell has no gate
 
     const js = await h.api.get("/admin/app.js");
     expect(js.status).toBe(200);
     expect(js.headers["content-type"]).toMatch(/javascript/);
-    // the bundle must not carry connection strings / secrets
-    expect(js.text).not.toMatch(/postgres:\/\/|DATABASE_URL|JWT_SECRET|password_hash/i);
+    for (const f of ["/admin/app.js", "/admin/login.js", "/admin/styles.css"]) {
+      const r = await h.api.get(f);
+      expect(r.status, f).toBe(200);
+      expect(r.text).not.toMatch(/postgres:\/\/|DATABASE_URL|JWT_SECRET|password_hash|_ciphertext/i);
+    }
+  });
+
+  it("has a dedicated sign-in page and serves the shell for deep links", async () => {
+    const login = await h.api.get("/admin/login");
+    expect(login.status).toBe(200);
+    expect(login.text).toContain('id="login-form"');
+
+    for (const p of ["/admin", "/admin/dashboard", `/admin/tenants/${crypto.randomUUID()}`, "/admin/support"]) {
+      const res = await h.api.get(p);
+      expect(res.status, p).toBe(200);
+      expect(res.text, p).toContain('data-nav="dashboard"');
+    }
+    expect((await h.api.get("/admin/missing.js")).status).toBe(404);
   });
 });
 

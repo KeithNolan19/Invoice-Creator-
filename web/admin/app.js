@@ -2,20 +2,58 @@
 
 /* Invoice Creator — Admin Control Centre (vanilla JS SPA).
    Talks to /api/admin/* with a bearer token. Holds no privileges of its own;
-   the server enforces requireAdmin + RLS on every call. */
+   the server enforces requireAdmin + RLS on every call.
 
+   Routing is on real paths under /admin (History API): /admin/tenants,
+   /admin/support/<id>, etc. The server serves this shell for any /admin/*
+   path so deep links work. Sign-in is its own page at /admin/login. */
+
+const BASE = "/admin";
+const LOGIN_URL = "/admin/login";
 const TOKEN_KEY = "ic_admin_token";
-const gate = document.getElementById("gate");
+
 const app = document.getElementById("app");
 const view = document.getElementById("view");
 
-let token = null;
-try { token = localStorage.getItem(TOKEN_KEY); } catch { token = null; }
+/* ---------------- token ---------------- */
+
+let memoryToken = null;
+(function adoptFragmentToken() {
+  const m = /(?:^|#|&)t=([^&]+)/.exec(location.hash || "");
+  if (!m) return;
+  memoryToken = decodeURIComponent(m[1]);
+  try { localStorage.setItem(TOKEN_KEY, memoryToken); } catch { /* memory only */ }
+  history.replaceState({}, "", location.pathname + location.search);
+})();
+
+function readToken() {
+  try { const v = localStorage.getItem(TOKEN_KEY); if (v) return v; } catch { /* private */ }
+  return memoryToken;
+}
+function setToken(next) {
+  memoryToken = next;
+  try {
+    if (next) localStorage.setItem(TOKEN_KEY, next);
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch { /* ignore */ }
+}
+function toLogin() {
+  const next = encodeURIComponent(location.pathname + location.search);
+  location.replace(`${LOGIN_URL}?next=${next}`);
+}
+
+let token = readToken();
+
+/* ---------------- helpers ---------------- */
 
 const esc = (s) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmtDate = (s) => (s ? new Date(s).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "—");
 const fmtDay = (s) => (s ? new Date(s).toLocaleDateString(undefined, { dateStyle: "medium" }) : "—");
+
+class ApiError extends Error {
+  constructor(status, message) { super(message); this.status = status; }
+}
 
 async function api(path, options = {}) {
   const { base = "/api/admin", ...rest } = options;
@@ -29,7 +67,7 @@ async function api(path, options = {}) {
   });
   if (res.status === 401) {
     setToken(null);
-    render();
+    toLogin();
     throw new ApiError(401, "Session expired — sign in again");
   }
   const body = res.status === 204 ? {} : await res.json().catch(() => ({}));
@@ -37,102 +75,88 @@ async function api(path, options = {}) {
   return body;
 }
 
-class ApiError extends Error {
-  constructor(status, message) { super(message); this.status = status; }
+/* ---------------- navigation ---------------- */
+
+function currentPath() {
+  let p = location.pathname;
+  if (p.startsWith(BASE)) p = p.slice(BASE.length);
+  return p || "/";
 }
-
-function setToken(next) {
-  token = next;
-  try {
-    if (next) localStorage.setItem(TOKEN_KEY, next);
-    else localStorage.removeItem(TOKEN_KEY);
-  } catch { /* ignore */ }
+function navigate(to, { replace = false } = {}) {
+  const url = to.startsWith(BASE) ? to : BASE + to;
+  history[replace ? "replaceState" : "pushState"]({}, "", url);
+  render();
 }
-
-/* ---------------- Login ---------------- */
-
-document.getElementById("login-form").addEventListener("submit", async (e) => {
+document.addEventListener("click", (e) => {
+  if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  const a = e.target.closest("a");
+  if (!a) return;
+  const href = a.getAttribute("href");
+  if (!href || a.target === "_blank" || a.hasAttribute("download")) return;
+  if (href !== BASE && !href.startsWith(BASE + "/")) return;
   e.preventDefault();
-  const errEl = document.getElementById("login-error");
-  errEl.hidden = true;
-  const email = document.getElementById("email").value.trim();
-  const password = document.getElementById("password").value;
-  try {
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body?.error?.message || "Sign in failed");
-    if (body.user?.role !== "admin") throw new Error("This account is not a platform administrator");
-    setToken(body.token);
-    location.hash = "#/";
-    render();
-  } catch (err) {
-    errEl.textContent = err.message;
-    errEl.hidden = false;
-  }
+  navigate(href);
 });
+window.addEventListener("popstate", render);
 
 document.getElementById("signout").addEventListener("click", async () => {
   try { await api("/logout", { method: "POST", base: "/api/auth" }); } catch { /* best effort */ }
   setToken(null);
-  location.hash = "#/";
-  render();
+  location.assign(LOGIN_URL);
 });
 
-/* ---------------- Router ---------------- */
+/* ---------------- router ---------------- */
 
 const routes = [
-  { re: /^#\/$/, view: dashboardView },
-  { re: /^#\/tenants$/, view: tenantsView },
-  { re: /^#\/tenants\/([0-9a-f-]{36})$/, view: tenantDetailView },
-  { re: /^#\/billing$/, view: billingConfigView },
-  { re: /^#\/support$/, view: supportListView },
-  { re: /^#\/support\/([0-9a-f-]{36})$/, view: supportTicketView },
-  { re: /^#\/audit$/, view: auditView },
+  { re: /^\/dashboard$/, view: dashboardView, nav: "dashboard" },
+  { re: /^\/tenants$/, view: tenantsView, nav: "tenants" },
+  { re: /^\/tenants\/([0-9a-f-]{36})$/, view: tenantDetailView, nav: "tenants" },
+  { re: /^\/billing$/, view: billingConfigView, nav: "billing" },
+  { re: /^\/support$/, view: supportListView, nav: "support" },
+  { re: /^\/support\/([0-9a-f-]{36})$/, view: supportTicketView, nav: "support" },
+  { re: /^\/audit$/, view: auditView, nav: "audit" },
 ];
 
-function render() {
+async function render() {
   clearInterval(supportPollTimer);
-  if (!token) {
-    gate.hidden = false;
-    app.hidden = true;
-    return;
+  token = readToken();
+  if (!token) return toLogin();
+
+  if (!verified) {
+    try {
+      const me = await (await fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } })).json();
+      if (me.user?.role !== "admin") { setToken(null); return toLogin(); }
+      verified = true;
+      document.getElementById("who").textContent = me.user.email || "";
+      refreshSupportBadge();
+      if (!badgeTimer) badgeTimer = setInterval(refreshSupportBadge, 20000);
+    } catch { setToken(null); return toLogin(); }
   }
-  gate.hidden = true;
+
   app.hidden = false;
 
-  const hash = location.hash || "#/";
-  const path = hash.split("?")[0];
+  const path = currentPath();
+  if (path === "/" || path === "" || path === "/login") return navigate("/dashboard", { replace: true });
+
   const match = routes.map((r) => [r, r.re.exec(path)]).find(([, m]) => m);
-  const navKey = path.startsWith("#/tenants")
-    ? "tenants"
-    : path.startsWith("#/billing")
-      ? "billing"
-      : path.startsWith("#/support")
-        ? "support"
-        : path.startsWith("#/audit")
-          ? "audit"
-          : "dashboard";
-  document.querySelectorAll("[data-nav]").forEach((a) => a.classList.toggle("active", a.dataset.nav === navKey));
+  document.querySelectorAll("[data-nav]").forEach((a) =>
+    a.classList.toggle("active", match && a.dataset.nav === match[0].nav));
+
+  if (!match) {
+    view.innerHTML = `<div class="view-head"><h1>Page not found</h1></div>
+      <p class="muted">That address doesn’t match anything.</p>
+      <a class="back" href="/admin/dashboard">← Dashboard</a>`;
+    return;
+  }
 
   view.innerHTML = `<p class="muted">Loading…</p>`;
-  const [route, m] = match || [routes[0], ["#/"]];
-  route.view(m).catch((err) => {
+  match[0].view(match[1]).catch((err) => {
     view.innerHTML = `<p class="error">${esc(err.message)}</p>`;
   });
 }
 
-window.addEventListener("hashchange", render);
-
-async function loadWho() {
-  try {
-    const me = await (await fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } })).json();
-    document.getElementById("who").textContent = me.user?.email || "";
-  } catch { /* ignore */ }
-}
+let verified = false;
+let badgeTimer = null;
 
 /* ---------------- Views ---------------- */
 
@@ -173,7 +197,7 @@ function statusPill(status) {
 }
 
 async function tenantsView() {
-  const params = new URLSearchParams(location.hash.split("?")[1] || "");
+  const params = new URLSearchParams(location.search);
   const search = params.get("search") || "";
   const status = params.get("status") || "";
   const qs = new URLSearchParams();
@@ -214,12 +238,12 @@ async function tenantsView() {
     const q = new URLSearchParams();
     if (s) q.set("search", s);
     if (st) q.set("status", st);
-    location.hash = `#/tenants${q.toString() ? `?${q}` : ""}`;
+    navigate(`/tenants${q.toString() ? `?${q}` : ""}`);
   };
   document.getElementById("t-search").addEventListener("change", applyFilters);
   document.getElementById("t-status").addEventListener("change", applyFilters);
   view.querySelectorAll("tr[data-id]").forEach((tr) =>
-    tr.addEventListener("click", () => { location.hash = `#/tenants/${tr.dataset.id}`; }));
+    tr.addEventListener("click", () => navigate(`/tenants/${tr.dataset.id}`)));
   document.getElementById("new-tenant-btn").addEventListener("click", showNewTenantForm);
 }
 
@@ -247,7 +271,7 @@ function showNewTenantForm() {
         method: "POST",
         body: JSON.stringify(slug ? { name, slug } : { name }),
       });
-      location.hash = `#/tenants/${tenant.id}`;
+      navigate(`/tenants/${tenant.id}`);
     } catch (e2) {
       err.textContent = e2.message;
       err.hidden = false;
@@ -260,7 +284,7 @@ async function tenantDetailView(m) {
   const { tenant, usage, users } = await api(`/tenants/${id}`);
   const suspended = tenant.status === "suspended";
   view.innerHTML = `
-    <a class="back" href="#/tenants">← All tenants</a>
+    <a class="back" href="/admin/tenants">← All tenants</a>
     <div class="view-head"><div><h1>${esc(tenant.name)}</h1><p class="lede">${statusPill(tenant.status)}</p></div></div>
 
     <div class="card">
@@ -320,10 +344,10 @@ async function tenantDetailView(m) {
   if (suspendBtn) suspendBtn.addEventListener("click", () => statusAction(id, "suspend"));
   if (reactivateBtn) reactivateBtn.addEventListener("click", () => statusAction(id, "reactivate"));
 
-  const userAction = (id, verb, confirmMsg) => async () => {
+  const userAction = (uid, verb, confirmMsg) => async () => {
     if (confirmMsg && !confirm(confirmMsg)) return;
     try {
-      await api(`/users/${id}/${verb}`, { method: "POST" });
+      await api(`/users/${uid}/${verb}`, { method: "POST" });
       render();
     } catch (e) {
       document.getElementById("user-msg").innerHTML = `<p class="error">${esc(e.message)}</p>`;
@@ -489,7 +513,7 @@ async function refreshSupportBadge() {
 
 async function supportListView() {
   clearInterval(supportPollTimer);
-  const q = new URLSearchParams((location.hash.split("?")[1] || ""));
+  const q = new URLSearchParams(location.search);
   const status = q.get("status") || "open";
   const { tickets } = await api(`/support/tickets${status === "all" ? "" : `?status=${status}`}`);
 
@@ -510,16 +534,16 @@ async function supportListView() {
               <div class="muted" style="font-size:12px">${esc((t.lastPreview || "").slice(0, 80))}</div></td>
             <td>${esc(fmtDate(t.lastMessageAt))}</td>
             <td><span class="pill ${t.status === "open" ? "active" : ""}">${t.status}</span></td>
-            <td><a class="mono" href="#/support/${esc(t.id)}">Open</a></td>
+            <td><a class="mono" href="/admin/support/${esc(t.id)}">Open</a></td>
           </tr>`).join("") || `<tr><td colspan="5" class="muted">No ${status === "all" ? "" : status} tickets.</td></tr>`}
       </tbody>
     </table>`;
 
   view.querySelectorAll("[data-s]").forEach((b) =>
-    b.addEventListener("click", () => { location.hash = `#/support?status=${b.dataset.s}`; }));
+    b.addEventListener("click", () => navigate(`/support?status=${b.dataset.s}`)));
   view.querySelectorAll("tr[data-id]").forEach((tr) =>
-    tr.addEventListener("click", (e) => { if (e.target.tagName !== "A") location.hash = `#/support/${tr.dataset.id}`; }));
-  supportPollTimer = setInterval(() => { if ((location.hash.split("?")[0]) === "#/support") supportListView(); }, 15000);
+    tr.addEventListener("click", (e) => { if (e.target.tagName !== "A") navigate(`/support/${tr.dataset.id}`); }));
+  supportPollTimer = setInterval(() => { if (currentPath() === "/support") supportListView(); }, 15000);
   refreshSupportBadge();
 }
 
@@ -527,14 +551,14 @@ async function supportTicketView(m) {
   clearInterval(supportPollTimer);
   const id = m[1];
   const paint = async () => {
-    if ((location.hash.split("?")[0]) !== `#/support/${id}`) return;
+    if (currentPath() !== `/support/${id}`) return;
     let data;
     try { data = await api(`/support/tickets/${id}`); }
     catch (e) { view.innerHTML = `<p class="error">${esc(e.message)}</p>`; return; }
     const { ticket, messages } = data;
     const closed = ticket.status === "closed";
     view.innerHTML = `
-      <a class="back" href="#/support">← Support</a>
+      <a class="back" href="/admin/support">← Support</a>
       <div class="view-head">
         <div><h1>${esc(ticket.subject)}</h1>
           <p class="lede">${esc(ticket.tenantName || "")} · ${esc(ticket.openedBy?.email || "—")} · <span class="pill ${closed ? "" : "active"}">${ticket.status}</span></p></div>
@@ -575,10 +599,10 @@ async function supportTicketView(m) {
     if (form) form.addEventListener("submit", async (e) => {
       e.preventDefault();
       const ta = document.getElementById("sup-body");
-      const val = ta.value.trim();
-      if (!val) return;
+      const value = ta.value.trim();
+      if (!value) return;
       ta.disabled = true;
-      try { await api(`/support/tickets/${id}/messages`, { method: "POST", body: JSON.stringify({ body: val }) }); await paint(); }
+      try { await api(`/support/tickets/${id}/messages`, { method: "POST", body: JSON.stringify({ body: value }) }); await paint(); }
       catch (e2) { ta.disabled = false; alert(e2.message); }
     });
   };
@@ -588,7 +612,6 @@ async function supportTicketView(m) {
 }
 
 async function auditView() {
-  clearInterval(supportPollTimer);
   const { auditLogs } = await api("/audit-logs?limit=200");
   view.innerHTML = `
     <div class="view-head"><div><h1>Audit log</h1><p class="lede">${auditLogs.length} most recent administrative actions.</p></div></div>
@@ -608,9 +631,4 @@ async function auditView() {
 }
 
 /* ---------------- Boot ---------------- */
-if (token) {
-  loadWho();
-  refreshSupportBadge();
-  setInterval(refreshSupportBadge, 20000);
-}
 render();
