@@ -55,6 +55,8 @@ a { color: inherit; }
   border-radius: 9px; background: #b23b3b; color: #fff; font-size: 10px; font-weight: 600;
 }
 .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #b23b3b; vertical-align: middle; }
+.dot.online { background: #2f7d4f; }          /* presence — signed in now */
+.dot.offline { background: #b0a99a; }         /* presence — idle / signed out */
 /* An author `display` beats the UA [hidden] rule, so restore it explicitly. */
 .nav-badge[hidden], .dot[hidden] { display: none !important; }
 

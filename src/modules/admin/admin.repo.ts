@@ -7,6 +7,7 @@ export interface DashboardStats {
   total_users: number;
   active_users: number;
   disabled_users: number;
+  online_users: number;
   total_invoices: number;
   admin_actions: number;
   admin_actions_7d: number;
@@ -22,6 +23,7 @@ export async function getDashboardStats(q: Queryable): Promise<DashboardStats> {
       (SELECT count(*) FROM users)::int                                     AS total_users,
       (SELECT count(*) FROM users WHERE disabled_at IS NULL)::int           AS active_users,
       (SELECT count(*) FROM users WHERE disabled_at IS NOT NULL)::int       AS disabled_users,
+      (SELECT count(*) FROM users WHERE last_seen_at > now() - interval '5 minutes')::int AS online_users,
       (SELECT count(*) FROM invoices)::int                                  AS total_invoices,
       (SELECT count(*) FROM audit_logs)::int                                AS admin_actions,
       (SELECT count(*) FROM audit_logs WHERE created_at > now() - interval '7 days')::int AS admin_actions_7d
@@ -32,7 +34,12 @@ export async function getDashboardStats(q: Queryable): Promise<DashboardStats> {
 export function serializeDashboard(s: DashboardStats) {
   return {
     tenants: { total: s.total_tenants, active: s.active_tenants, suspended: s.suspended_tenants },
-    users: { total: s.total_users, active: s.active_users, disabled: s.disabled_users },
+    users: {
+      total: s.total_users,
+      active: s.active_users,
+      disabled: s.disabled_users,
+      online: s.online_users,
+    },
     activity: {
       totalInvoices: s.total_invoices,
       adminActions: s.admin_actions,

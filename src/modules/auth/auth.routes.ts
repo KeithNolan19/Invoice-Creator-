@@ -43,6 +43,9 @@ export function authRoutes(db: Db, rateLimiter?: LoginRateLimiter): Router {
     ensureAccountActive(user); // 403 for disabled account / suspended tenant
 
     rateLimiter?.succeed(ip, email);
+    void db
+      .bypassRls((q) => q.query("SELECT record_user_login($1)", [user.id]))
+      .catch(() => undefined);
     res.json({
       token: signAccessToken(user.id),
       user: {

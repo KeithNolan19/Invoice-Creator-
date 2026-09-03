@@ -51,6 +51,30 @@ const esc = (s) =>
 const fmtDate = (s) => (s ? new Date(s).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "—");
 const fmtDay = (s) => (s ? new Date(s).toLocaleDateString(undefined, { dateStyle: "medium" }) : "—");
 
+/** "just now" / "5m ago" / "3h ago" / "2d ago" / a date for anything older. */
+function relTime(s) {
+  if (!s) return "never";
+  const ms = Date.now() - new Date(s).getTime();
+  if (!Number.isFinite(ms)) return "—";
+  if (ms < 45_000) return "just now";
+  const m = Math.round(ms / 60_000);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.round(h / 24);
+  if (d < 14) return `${d}d ago`;
+  return fmtDay(s);
+}
+
+/** Presence pill for a serialized user. Online = an authenticated request in
+ *  the last 5 minutes (computed here so it stays correct between renders). */
+function presenceCell(u) {
+  const seenMs = u.lastSeenAt ? Date.now() - new Date(u.lastSeenAt).getTime() : Infinity;
+  if (seenMs < 5 * 60_000) return `<span class="dot online" title="Signed in now"></span> Online`;
+  if (!u.lastSeenAt) return `<span class="muted">Never signed in</span>`;
+  return `<span class="dot offline" title="${esc(fmtDate(u.lastSeenAt))}"></span> <span class="muted">${esc(relTime(u.lastSeenAt))}</span>`;
+}
+
 class ApiError extends Error {
   constructor(status, message) { super(message); this.status = status; }
 }
@@ -193,6 +217,7 @@ async function dashboardView() {
       <h3>Users</h3>
       <div class="tiles">
         ${tile(stats.users.total, "Total")}
+        ${tile(`${stats.users.online ?? 0} online`, "Signed in now")}
         ${tile(stats.users.active, "Active")}
         ${tile(stats.users.disabled, "Disabled")}
       </div>
@@ -350,13 +375,14 @@ async function tenantDetailView(m) {
     <h2>Users</h2>
     <div id="user-msg"></div>
     <table>
-      <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Presence</th><th>Status</th><th></th></tr></thead>
       <tbody>
         ${users.map((u) => `
           <tr>
             <td>${esc(u.name)}</td>
             <td><span class="mono">${esc(u.email)}</span></td>
             <td>${esc(u.role)}</td>
+            <td>${presenceCell(u)}</td>
             <td>${u.disabled ? `<span class="pill disabled">disabled</span>` : `<span class="pill active">active</span>`}</td>
             <td>${
               u.role === "admin"
@@ -365,7 +391,7 @@ async function tenantDetailView(m) {
                   ? `<button class="link" data-enable="${esc(u.id)}">Enable</button>`
                   : `<button class="link" data-disable="${esc(u.id)}">Disable</button>`
             }</td>
-          </tr>`).join("") || `<tr><td colspan="5" class="muted">No users yet.</td></tr>`}
+          </tr>`).join("") || `<tr><td colspan="6" class="muted">No users yet.</td></tr>`}
       </tbody>
     </table>
 

@@ -24,6 +24,8 @@ export interface TenantUserRow {
   tenant_role: TenantRole | null;
   disabled_at: string | null;
   created_at: string;
+  last_seen_at: string | null;
+  last_login_at: string | null;
 }
 
 // The pre-auth / per-request identity lookup needs the tenant's status too, so a
@@ -47,7 +49,8 @@ export async function findAuthUserById(q: Queryable, id: string): Promise<AuthUs
   return rows[0] ?? null;
 }
 
-const USER_COLUMNS = "id, email, name, role, tenant_id, tenant_role, disabled_at, created_at";
+const USER_COLUMNS =
+  "id, email, name, role, tenant_id, tenant_role, disabled_at, created_at, last_seen_at, last_login_at";
 
 /**
  * Visible users, subject to whatever RLS context the caller is running in. An
@@ -179,5 +182,16 @@ export function serializeUser(row: TenantUserRow) {
     disabled: row.disabled_at !== null,
     disabledAt: row.disabled_at,
     createdAt: row.created_at,
+    lastSeenAt: row.last_seen_at,
+    lastLoginAt: row.last_login_at,
+    online: isOnline(row.last_seen_at),
   };
+}
+
+/** "Online" = an authenticated request in the last 5 minutes (tokens last 30). */
+export const ONLINE_WINDOW_MS = 5 * 60_000;
+export function isOnline(lastSeenAt: string | Date | null): boolean {
+  if (!lastSeenAt) return false;
+  const t = lastSeenAt instanceof Date ? lastSeenAt.getTime() : Date.parse(lastSeenAt);
+  return Number.isFinite(t) && Date.now() - t < ONLINE_WINDOW_MS;
 }
