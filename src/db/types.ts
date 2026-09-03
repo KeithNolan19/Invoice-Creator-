@@ -24,6 +24,12 @@ export interface RlsContext {
   /** null for platform admins, who are not bound to a single tenant. */
   tenantId: string | null;
   isAdmin: boolean;
+  /**
+   * The caller's role *within their tenant* ('admin' | 'member'), or null for
+   * platform admins / contexts with no tenant membership. Fed to the
+   * `app.tenant_role` GUC so RLS can gate tenant-admin-only tables.
+   */
+  tenantRole?: "admin" | "member" | null;
 }
 
 export interface Db {

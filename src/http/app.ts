@@ -8,6 +8,7 @@ import { LoginRateLimiter } from "./rate-limit.ts";
 import { adminRoutes } from "../modules/admin/admin.routes.ts";
 import { authRoutes } from "../modules/auth/auth.routes.ts";
 import { invoiceRoutes } from "../modules/invoices/invoices.routes.ts";
+import { teamRoutes } from "../modules/team/team.routes.ts";
 import { tenantRoutes } from "../modules/tenants/tenants.routes.ts";
 import { userRoutes } from "../modules/users/users.routes.ts";
 
@@ -44,6 +45,7 @@ export function createApp(db: Db, options: AppOptions = {}): Express {
   app.use("/api/auth", authRoutes(db, rateLimiter ?? undefined));
   app.use("/api/tenants", tenantRoutes(db));
   app.use("/api/users", userRoutes(db));
+  app.use("/api/team", teamRoutes(db));
   app.use("/api/invoices", invoiceRoutes(db));
   app.use("/api/admin", adminRoutes(db));
 

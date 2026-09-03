@@ -58,6 +58,7 @@ export class PgDb implements Db {
       await client.query(`SET LOCAL ROLE ${config.appDbRole}`);
       await client.query("SELECT set_config('app.current_tenant', $1, true)", [ctx.tenantId ?? ""]);
       await client.query("SELECT set_config('app.is_admin', $1, true)", [ctx.isAdmin ? "true" : "false"]);
+      await client.query("SELECT set_config('app.tenant_role', $1, true)", [ctx.tenantRole ?? ""]);
       await client.query("SELECT set_config('app.current_user_id', $1, true)", [ctx.userId]);
       const result = await fn(wrap(client));
       await client.query("COMMIT");

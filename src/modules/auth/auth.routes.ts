@@ -51,6 +51,7 @@ export function authRoutes(db: Db, rateLimiter?: LoginRateLimiter): Router {
         name: user.name,
         role: user.role,
         tenantId: user.tenant_id,
+        tenantRole: user.tenant_role,
       },
     });
   });
@@ -58,7 +59,14 @@ export function authRoutes(db: Db, rateLimiter?: LoginRateLimiter): Router {
   router.get("/me", authenticate(db), (req, res) => {
     const me = requireAuth(req);
     res.json({
-      user: { id: me.userId, email: me.email, name: me.name, role: me.role, tenantId: me.tenantId },
+      user: {
+        id: me.userId,
+        email: me.email,
+        name: me.name,
+        role: me.role,
+        tenantId: me.tenantId,
+        tenantRole: me.tenantRole,
+      },
     });
   });
 

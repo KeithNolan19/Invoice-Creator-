@@ -14,6 +14,7 @@ interface SeedUser {
   name: string;
   role: "user" | "admin";
   tenantSlug: string | null;
+  tenantRole: "admin" | "member" | null;
 }
 
 const TENANTS: SeedTenant[] = [
@@ -22,9 +23,9 @@ const TENANTS: SeedTenant[] = [
 ];
 
 const USERS: SeedUser[] = [
-  { email: "alice@acme.test", name: "Alice Anderson", role: "user", tenantSlug: "acme" },
-  { email: "bob@smith.test", name: "Bob Barker", role: "user", tenantSlug: "smith" },
-  { email: "admin@invoicecreator.test", name: "Platform Admin", role: "admin", tenantSlug: null },
+  { email: "alice@acme.test", name: "Alice Anderson", role: "user", tenantSlug: "acme", tenantRole: "admin" },
+  { email: "bob@smith.test", name: "Bob Barker", role: "user", tenantSlug: "smith", tenantRole: "admin" },
+  { email: "admin@invoicecreator.test", name: "Platform Admin", role: "admin", tenantSlug: null, tenantRole: null },
 ];
 
 const INVOICES: Array<{ tenantSlug: string; number: string; client: string; cents: number; status: string }> = [
@@ -45,17 +46,28 @@ async function seedWith(q: Queryable): Promise<void> {
     tenantIds.set(t.slug, rows[0]!.id);
   }
 
+  // One tenant_settings row per tenant (the migration backfills the same for
+  // pre-existing tenants; this covers a re-seed after TRUNCATE).
+  for (const t of TENANTS) {
+    await q.query(
+      `INSERT INTO tenant_settings (tenant_id, business_name)
+       VALUES ($1, $2) ON CONFLICT (tenant_id) DO NOTHING`,
+      [tenantIds.get(t.slug)!, t.name],
+    );
+  }
+
   const passwordHash = await hashPassword(SEED_PASSWORD);
   const userIds = new Map<string, string>();
   for (const u of USERS) {
     const tenantId = u.tenantSlug ? tenantIds.get(u.tenantSlug)! : null;
     const { rows } = await q.query<{ id: string }>(
-      `INSERT INTO users (email, password_hash, name, role, tenant_id)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO users (email, password_hash, name, role, tenant_id, tenant_role)
+       VALUES ($1, $2, $3, $4, $5, $6)
        ON CONFLICT (email) DO UPDATE
-         SET name = EXCLUDED.name, role = EXCLUDED.role, tenant_id = EXCLUDED.tenant_id
+         SET name = EXCLUDED.name, role = EXCLUDED.role,
+             tenant_id = EXCLUDED.tenant_id, tenant_role = EXCLUDED.tenant_role
        RETURNING id`,
-      [u.email, passwordHash, u.name, u.role, tenantId],
+      [u.email, passwordHash, u.name, u.role, tenantId, u.tenantRole],
     );
     userIds.set(u.email, rows[0]!.id);
   }
@@ -65,14 +77,30 @@ async function seedWith(q: Queryable): Promise<void> {
   for (const inv of INVOICES) {
     const tenantId = tenantIds.get(inv.tenantSlug)!;
     const createdBy = inv.tenantSlug === "acme" ? acmeCreator : smithCreator;
+    const paid = inv.status === "paid";
     await q.query(
-      `INSERT INTO invoices (tenant_id, number, client_name, amount_cents, status, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO invoices
+         (tenant_id, number, client_name, amount_cents, currency, status, created_by,
+          subtotal_cents, total_cents, payment_status,
+          paid_at, paid_amount_cents, paid_currency)
+       VALUES ($1, $2, $3, $4, 'USD', $5, $6, $4, $4, $7, $8, $9, $10)
        ON CONFLICT (tenant_id, number) DO UPDATE
          SET client_name = EXCLUDED.client_name,
              amount_cents = EXCLUDED.amount_cents,
-             status = EXCLUDED.status`,
-      [tenantId, inv.number, inv.client, inv.cents, inv.status, createdBy],
+             status = EXCLUDED.status,
+             payment_status = EXCLUDED.payment_status`,
+      [
+        tenantId,
+        inv.number,
+        inv.client,
+        inv.cents,
+        inv.status,
+        createdBy,
+        paid ? "paid" : "unpaid",
+        paid ? new Date() : null,
+        paid ? inv.cents : null,
+        paid ? "USD" : null,
+      ],
     );
   }
 }

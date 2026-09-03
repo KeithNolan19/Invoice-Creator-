@@ -56,6 +56,7 @@ export function authenticate(db: Db): RequestHandler {
         tenantId: user.tenant_id,
         isAdmin: user.role === "admin",
         role: user.role,
+        tenantRole: user.tenant_role,
         email: user.email,
         name: user.name,
       };
@@ -75,5 +76,18 @@ export function requireAuth(req: Request): AuthPrincipal {
 export const requireAdmin: RequestHandler = (req, _res, next) => {
   if (!req.auth) return next(unauthorized());
   if (!req.auth.isAdmin) return next(forbidden("Admin access required"));
+  next();
+};
+
+/**
+ * Gate for tenant-admin-only actions (business settings, the Fire.com
+ * integration, team management, voiding invoices). Resolved from `req.auth`,
+ * which the DB row populates — never from the token or request body. Platform
+ * admins operate through the Admin Control Centre, not the customer app, so they
+ * do not pass this gate.
+ */
+export const requireTenantAdmin: RequestHandler = (req, _res, next) => {
+  if (!req.auth) return next(unauthorized());
+  if (req.auth.tenantRole !== "admin") return next(forbidden("Tenant admin access required"));
   next();
 };

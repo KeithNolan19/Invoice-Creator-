@@ -1,8 +1,9 @@
 import type { Express } from "express";
 import supertest from "supertest";
+import { hashPassword } from "../../src/auth/password.ts";
 import { signAccessToken } from "../../src/auth/tokens.ts";
 import { migrate } from "../../src/db/migrator.ts";
-import { seed } from "../../src/db/seed.ts";
+import { seed, SEED_PASSWORD } from "../../src/db/seed.ts";
 import { createApp } from "../../src/http/app.ts";
 import { PgliteDb } from "./pglite-db.ts";
 
@@ -23,14 +24,36 @@ export interface HarnessState {
   };
 }
 
+export interface ExtraUser {
+  id: string;
+  email: string;
+  token: string;
+}
+
 export interface Harness extends HarnessState {
   db: PgliteDb;
   app: Express;
   api: ReturnType<typeof supertest>;
   /** Wipe all tenant data, re-seed, and refresh `ids` / `tokens` in place. */
   reload(): Promise<void>;
+  /**
+   * Insert an extra tenant user (default: a `member`) and mint a token for it.
+   * Used by Stage-1 tests that need a non-admin tenant member without changing
+   * the seed (which the existing suites assert against).
+   */
+  createUser(opts: {
+    tenant: "acme" | "smith";
+    tenantRole?: "admin" | "member";
+    email?: string;
+  }): Promise<ExtraUser>;
   close(): Promise<void>;
 }
+
+const TENANT_TABLES =
+  "audit_logs, invoice_line_items, invoices, tenant_payment_integrations, tenant_settings, customers, users, tenants";
+
+let cachedHash: Promise<string> | null = null;
+const seedHash = () => (cachedHash ??= hashPassword(SEED_PASSWORD));
 
 async function seedAndResolve(db: PgliteDb): Promise<HarnessState> {
   await seed(db);
@@ -53,7 +76,6 @@ async function seedAndResolve(db: PgliteDb): Promise<HarnessState> {
   };
 
   return {
-    // Tokens minted directly — the login/bcrypt path is covered in test/auth.test.ts.
     tokens: {
       alice: signAccessToken(userIds.alice),
       bob: signAccessToken(userIds.bob),
@@ -84,11 +106,24 @@ export async function createHarness(): Promise<Harness> {
     ...(await seedAndResolve(db)),
     async reload() {
       await db.privileged((q) =>
-        q.exec("TRUNCATE audit_logs, invoices, users, tenants RESTART IDENTITY CASCADE"),
+        q.exec(`TRUNCATE ${TENANT_TABLES} RESTART IDENTITY CASCADE`),
       );
       const next = await seedAndResolve(db);
       harness.tokens = next.tokens;
       harness.ids = next.ids;
+    },
+    async createUser({ tenant, tenantRole = "member", email }) {
+      const addr = email ?? `${tenantRole}-${Math.random().toString(36).slice(2, 8)}@${tenant}.test`;
+      const hash = await seedHash();
+      const id = await db.privileged(async (q) => {
+        const { rows } = await q.query<{ id: string }>(
+          `INSERT INTO users (email, password_hash, name, role, tenant_id, tenant_role)
+           VALUES ($1, $2, $3, 'user', $4, $5) RETURNING id`,
+          [addr, hash, `User ${addr}`, harness.ids.tenants[tenant], tenantRole],
+        );
+        return rows[0]!.id;
+      });
+      return { id, email: addr, token: signAccessToken(id) };
     },
     close: () => db.close(),
   };

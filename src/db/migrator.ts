@@ -19,10 +19,16 @@ async function ensureRegistry(q: Queryable): Promise<void> {
   `);
 }
 
+export interface MigrateOptions {
+  /** Only apply migrations whose 3-digit prefix is <= this (e.g. "007"). For tests. */
+  upTo?: string;
+}
+
 /** Apply every `NNN_*.sql` file in ./migrations that has not run yet, in order. */
-export async function migrate(db: Db): Promise<AppliedMigration[]> {
+export async function migrate(db: Db, opts: MigrateOptions = {}): Promise<AppliedMigration[]> {
   const files = (await readdir(migrationsDir))
     .filter((f) => f.endsWith(".sql"))
+    .filter((f) => !opts.upTo || f.slice(0, 3) <= opts.upTo)
     .sort();
 
   return db.privileged(async (q) => {

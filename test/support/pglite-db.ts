@@ -60,6 +60,7 @@ export class PgliteDb implements Db {
         await q.exec(`SET LOCAL ROLE ${config.appDbRole}`);
         await q.query("SELECT set_config('app.current_tenant', $1, true)", [ctx.tenantId ?? ""]);
         await q.query("SELECT set_config('app.is_admin', $1, true)", [ctx.isAdmin ? "true" : "false"]);
+        await q.query("SELECT set_config('app.tenant_role', $1, true)", [ctx.tenantRole ?? ""]);
         await q.query("SELECT set_config('app.current_user_id', $1, true)", [ctx.userId]);
         const result = await fn(q);
         await q.exec("COMMIT");

@@ -16,6 +16,7 @@ import {
   type TenantStatus,
 } from "../tenants/tenants.repo.ts";
 import {
+  countTenantUsers,
   createTenantUser,
   disableUser,
   enableUser,
@@ -201,12 +202,15 @@ export function adminRoutes(db: Db): Router {
         const tenant = await getTenantById(q, id.data);
         if (!tenant) return null;
         // tenantId comes from the URL, never the body — an admin action cannot
-        // place a user in the wrong tenant.
+        // place a user in the wrong tenant. The first user provisioned for a
+        // tenant becomes its tenant admin; later ones are members.
+        const firstUser = (await countTenantUsers(q, id.data)) === 0;
         const created = await createTenantUser(q, {
           email: body.email,
           name: body.name,
           passwordHash,
           tenantId: id.data,
+          tenantRole: firstUser ? "admin" : "member",
         });
         await recordAudit(q, {
           actorUserId: principal.userId,
