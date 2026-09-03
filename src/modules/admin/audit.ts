@@ -12,6 +12,14 @@ export type AuditAction =
   | "billing.fire_verified"
   | "billing.webhook_received"
   | "billing.webhook_failed"
+  | "billing.subscription_set"
+  | "billing.invoice_created"
+  | "billing.invoice_issued"
+  | "billing.invoice_cancelled"
+  | "billing.invoice_paid"
+  | "billing.renewal_generated"
+  | "billing.external_payment_recorded"
+  | "billing.job_run"
   // Support desk
   | "support.ticket_closed"
   | "support.ticket_reopened";

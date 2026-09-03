@@ -1,0 +1,26 @@
+# Runs one pass of the time-based billing work (renewal invoices, overdue
+# flags, Fire.com payment reconciliation). Triggered by invoice-billing.timer.
+#
+# Install:
+#   sudo cp deploy/invoice-billing.{service,timer} /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now invoice-billing.timer
+
+[Unit]
+Description=Invoice Creator billing tick
+After=network-online.target postgresql.service invoice-creator.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=invoice
+Group=invoice
+WorkingDirectory=/var/www/invoice-creator
+EnvironmentFile=/etc/invoice-creator/app.env
+ExecStart=/usr/bin/node --import tsx/esm src/jobs/billing-tick.ts
+# The app auto-migrates only in dev; the tick never touches schema.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/www/invoice-creator

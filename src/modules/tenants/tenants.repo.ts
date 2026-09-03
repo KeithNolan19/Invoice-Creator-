@@ -7,10 +7,15 @@ export interface TenantRow {
   name: string;
   slug: string;
   status: TenantStatus;
+  suspension_reason: "unpaid" | "other" | null;
+  suspended_at: string | null;
+  reactivated_at: string | null;
+  reactivation_note: string | null;
   created_at: string;
 }
 
-const COLUMNS = "id, name, slug, status, created_at";
+const COLUMNS =
+  "id, name, slug, status, suspension_reason, suspended_at, reactivated_at, reactivation_note, created_at";
 
 export async function listTenants(q: Queryable): Promise<TenantRow[]> {
   const { rows } = await q.query<TenantRow>(
@@ -106,6 +111,10 @@ export function serializeTenant(row: TenantRow) {
     name: row.name,
     slug: row.slug,
     status: row.status,
+    suspensionReason: row.suspension_reason,
+    suspendedAt: row.suspended_at,
+    reactivatedAt: row.reactivated_at,
+    reactivationNote: row.reactivation_note,
     createdAt: row.created_at,
   };
 }

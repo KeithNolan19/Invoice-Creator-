@@ -5,6 +5,7 @@ import {
   type FireAccessToken,
   FireApiError,
   type FireCredentials,
+  type FirePaymentRequestDetail,
   type PaymentRequestCreated,
 } from "./types.ts";
 
@@ -19,8 +20,8 @@ import {
  * Verified endpoints (docs.fire.com):
  *   auth:    POST {api}/business/v1/apps/accesstokens
  *   create:  POST {api}/v1/paymentrequests
- *   detail:  GET  {api}/business/v1/paymentrequests/{code}
- *   payments:GET  {api}/business/v2/paymentrequests/{code}/payments
+ *   detail:  GET  {api}/v1/paymentrequests/{code}     -> { status, amount, totalAmountPaid, countTimesPaid, ... }
+ *   payments:GET  {api}/v2/paymentrequests/{code}/payments
  */
 export class FireClient {
   private token?: { value: string; expiresAtMs: number };
@@ -125,17 +126,15 @@ export class FireClient {
     }) as Promise<PaymentRequestCreated>;
   }
 
-  /** Reconciliation poll — summary status of a payment request. */
-  getPaymentRequest(code: string): Promise<Record<string, unknown>> {
-    return this.authed(`/business/v1/paymentrequests/${encodeURIComponent(code)}`) as Promise<
-      Record<string, unknown>
-    >;
+  /** Reconciliation poll — summary of a payment request incl. `totalAmountPaid`. */
+  getPaymentRequest(code: string): Promise<FirePaymentRequestDetail> {
+    return this.authed(`/v1/paymentrequests/${encodeURIComponent(code)}`) as Promise<FirePaymentRequestDetail>;
   }
 
   /** Reconciliation poll — individual payments against a request. */
   getPaymentRequestPayments(code: string): Promise<Record<string, unknown>> {
     return this.authed(
-      `/business/v2/paymentrequests/${encodeURIComponent(code)}/payments`,
+      `/v2/paymentrequests/${encodeURIComponent(code)}/payments`,
     ) as Promise<Record<string, unknown>>;
   }
 

@@ -38,16 +38,20 @@ const smithCtx = (): RlsContext => ({
 });
 
 describe("subscription plans", () => {
-  it("migration 011 seeds the three tiers", async () => {
+  it("seeds the three tiers plus the daily test plan", async () => {
     const plans = await h.db.withContext(acmeCtx(), (q) => listPlans(q));
-    expect(plans.map((p) => p.code)).toEqual(["starter", "team", "business"]);
-    expect(plans.map((p) => Number(p.monthly_cents))).toEqual([1000, 1500, 2000]);
+    expect(plans.map((p) => p.code)).toEqual(["starter", "team", "business", "test-daily"]);
+    expect(plans.map((p) => Number(p.base_amount_cents))).toEqual([1000, 1500, 2000, 100]);
+    const test = plans.find((p) => p.code === "test-daily")!;
+    expect(test.base_interval).toBe("day");
+    expect(test.reminder_lead_minutes).toBe(60);
+    expect(test.is_test).toBe(true);
   });
 
   it("a tenant cannot create or edit plans", async () => {
     await expect(
       h.db.withContext(acmeCtx(), (q) =>
-        q.query("INSERT INTO subscription_plans (code,name,max_users,monthly_cents) VALUES ('x','X',1,1)"),
+        q.query("INSERT INTO subscription_plans (code,name,max_users,base_amount_cents) VALUES ('x','X',1,1)"),
       ),
     ).rejects.toThrow();
   });

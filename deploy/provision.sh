@@ -199,6 +199,15 @@ done
 echo "    /health OK"
 
 # ---------------------------------------------------------------------------
+say "Installing the billing scheduler (systemd timer)"
+sed "s#^ExecStart=.*#ExecStart=${NODE_BIN} --import tsx/esm src/jobs/billing-tick.ts#" \
+  "$APP_DIR/deploy/invoice-billing.service" > /etc/systemd/system/invoice-billing.service
+cp "$APP_DIR/deploy/invoice-billing.timer" /etc/systemd/system/invoice-billing.timer
+systemctl daemon-reload
+systemctl enable --now invoice-billing.timer >/dev/null 2>&1 || true
+echo "    next run: $(systemctl show invoice-billing.timer -p NextElapseUSecRealtime --value 2>/dev/null || echo scheduled)"
+
+# ---------------------------------------------------------------------------
 say "Creating the platform admin"
 ADMIN_CREATED_PW=""
 if [ -n "$ADMIN_EMAIL" ]; then

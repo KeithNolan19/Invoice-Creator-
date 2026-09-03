@@ -5,6 +5,7 @@ export {
   type FireAccessToken,
   FireApiError,
   type FireCredentials,
+  type FirePaymentRequestDetail,
   type FireWebhookEvent,
   FireWebhookError,
   type PaymentRequestCreated,

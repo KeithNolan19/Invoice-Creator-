@@ -112,6 +112,7 @@ const routes = [
   { re: /^\/tenants$/, view: tenantsView, nav: "tenants" },
   { re: /^\/tenants\/([0-9a-f-]{36})$/, view: tenantDetailView, nav: "tenants" },
   { re: /^\/billing$/, view: billingConfigView, nav: "billing" },
+  { re: /^\/notifications$/, view: notificationsView, nav: "notifications" },
   { re: /^\/support$/, view: supportListView, nav: "support" },
   { re: /^\/support\/([0-9a-f-]{36})$/, view: supportTicketView, nav: "support" },
   { re: /^\/audit$/, view: auditView, nav: "audit" },
@@ -119,6 +120,7 @@ const routes = [
 
 async function render() {
   clearInterval(supportPollTimer);
+  clearInterval(notifPollTimer);
   token = readToken();
   if (!token) return toLogin();
 
@@ -129,7 +131,8 @@ async function render() {
       verified = true;
       document.getElementById("who").textContent = me.user.email || "";
       refreshSupportBadge();
-      if (!badgeTimer) badgeTimer = setInterval(refreshSupportBadge, 20000);
+      refreshNotifBadge();
+      if (!badgeTimer) badgeTimer = setInterval(() => { refreshSupportBadge(); refreshNotifBadge(); }, 20000);
     } catch { setToken(null); return toLogin(); }
   }
 
@@ -161,9 +164,23 @@ let badgeTimer = null;
 /* ---------------- Views ---------------- */
 
 async function dashboardView() {
-  const { stats } = await api("/dashboard");
+  const [{ stats }, billing] = await Promise.all([
+    api("/dashboard"),
+    api("/summary", { base: "/api/admin/billing" }).catch(() => null),
+  ]);
   view.innerHTML = `
     <div class="view-head"><div><h1>Dashboard</h1><p class="lede">Platform overview across all tenants.</p></div></div>
+    ${billing ? `<div class="tile-group">
+      <h3>Billing</h3>
+      <div class="tiles">
+        ${tile(billing.activeSubscriptions, "Active subs")}
+        ${tile(billing.renewingWithin7Days, "Renewing ≤7d")}
+        ${tile(billing.outstanding.count, "Outstanding")}
+        ${tile(money(billing.outstanding.totalCents, "EUR"), "Owed")}
+        ${tile(billing.paidLast30Days, "Paid · 30d")}
+        ${tile(billing.suspendedUnpaid, "Suspended (unpaid)")}
+      </div>
+    </div>` : ""}
     <div class="tile-group">
       <h3>Tenants</h3>
       <div class="tiles">
@@ -337,7 +354,14 @@ async function tenantDetailView(m) {
       </div>
       <p class="error" id="nu-error" hidden></p>
       <div class="actions"><button type="submit">Create user</button></div>
-    </form>`;
+    </form>
+
+    <div id="tenant-billing-slot" style="margin-top:28px"></div>`;
+
+  renderTenantBilling(id, "tenant-billing-slot").catch((e) => {
+    const el = document.getElementById("tenant-billing-slot");
+    if (el) el.innerHTML = `<h2>Billing</h2><p class="error">${esc(e.message)}</p>`;
+  });
 
   const suspendBtn = document.getElementById("suspend");
   const reactivateBtn = document.getElementById("reactivate");
@@ -609,6 +633,204 @@ async function supportTicketView(m) {
   await paint();
   supportPollTimer = setInterval(paint, 6000);
   refreshSupportBadge();
+}
+
+/* ---------------- Billing (per tenant) ---------------- */
+
+const money = (cents, ccy) => {
+  try { return new Intl.NumberFormat(undefined, { style: "currency", currency: ccy || "EUR" }).format((Number(cents) || 0) / 100); }
+  catch { return `${((Number(cents) || 0) / 100).toFixed(2)} ${ccy || ""}`.trim(); }
+};
+
+async function renderTenantBilling(tenantId, slotId) {
+  const slot = document.getElementById(slotId);
+  if (!slot) return;
+  const [detail, { plans }] = await Promise.all([
+    api(`/billing/tenants/${tenantId}`, { base: "/api/admin/billing" }),
+    api(`/plans`, { base: "/api/admin/billing" }),
+  ]);
+  const s = detail.subscription;
+  const planOpts = plans.filter((p) => p.active).map((p) =>
+    `<option value="${esc(p.id)}" data-interval="${esc(p.baseInterval)}">${esc(p.name)} · ${money(p.baseAmountCents, p.currency)}/${esc(p.baseInterval)}${p.isTest ? " · TEST" : ""}</option>`).join("");
+
+  slot.innerHTML = `
+    <h2>Billing</h2>
+    ${detail.outgrown ? `<div class="notice"><strong>Outgrown plan.</strong> ${detail.activeUserCount} active users exceed this plan's limit.</div>` : ""}
+    <div class="card">
+      ${s ? `<dl class="dl">
+        <dt>Plan</dt><dd>${esc(s.plan.name)} <span class="muted">(${esc(s.billingInterval)}${s.plan.isTest ? ", test" : ""})</span></dd>
+        <dt>Amount</dt><dd>${money(s.amountCents, s.currency)} / ${esc(s.billingInterval)}</dd>
+        <dt>Current period</dt><dd>${esc(s.currentPeriodStart)} → ${esc(s.currentPeriodEnd)}</dd>
+        <dt>Renews</dt><dd>${esc(s.renewalDate)}</dd>
+        <dt>Status</dt><dd><span class="pill ${s.status === "active" ? "active" : ""}">${esc(s.status)}</span></dd>
+      </dl>` : `<p class="muted">No subscription.</p>`}
+      <form class="inline-form" id="sub-form" style="margin-top:12px">
+        <div class="row">
+          <div class="field"><label for="sub-plan">${s ? "Change plan" : "Assign plan"}</label>
+            <select id="sub-plan">${planOpts}</select></div>
+          <div class="field"><label for="sub-interval">Interval</label>
+            <select id="sub-interval"><option value="day">day</option><option value="month" selected>month</option><option value="year">year</option></select></div>
+        </div>
+        <p class="error" id="sub-err" hidden></p>
+        <div class="actions"><button type="submit">Save subscription</button>
+          ${s ? `<button type="button" class="ghost" id="sub-cancel">Cancel subscription</button>` : ""}</div>
+      </form>
+    </div>
+
+    <h3 style="margin-top:20px">Platform invoices</h3>
+    <table>
+      <thead><tr><th>Number</th><th>Description</th><th>Due</th><th class="num">Amount</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        ${detail.invoices.map((i) => `
+          <tr>
+            <td class="mono">${esc(i.number)}</td>
+            <td>${esc(i.description)}</td>
+            <td>${esc(i.dueDate)}${i.overdue ? ' <span class="pill disabled">overdue</span>' : ""}</td>
+            <td class="num">${money(i.amountCents, i.currency)}</td>
+            <td><span class="pill ${i.status === "paid" ? "active" : ""}">${esc(i.status)}</span></td>
+            <td>${invoiceActions(i)}</td>
+          </tr>`).join("") || `<tr><td colspan="6" class="muted">No platform invoices.</td></tr>`}
+      </tbody>
+    </table>
+    <div class="actions" style="margin-top:12px">
+      <button type="button" class="ghost" id="inv-adhoc">Create ad-hoc invoice</button>
+    </div>
+    <div id="adhoc-slot"></div>`;
+
+  const g = (id) => document.getElementById(id);
+  g("sub-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const err = g("sub-err"); err.hidden = true;
+    try {
+      await api(`/billing/tenants/${tenantId}/subscription`, {
+        base: "/api/admin/billing",
+        method: "PUT",
+        body: JSON.stringify({ planId: g("sub-plan").value, billingInterval: g("sub-interval").value }),
+      });
+      renderTenantBilling(tenantId, slotId);
+    } catch (e2) { err.textContent = e2.message; err.hidden = false; }
+  });
+  const cancelBtn = g("sub-cancel");
+  if (cancelBtn) cancelBtn.addEventListener("click", async () => {
+    if (!confirm("Cancel this tenant's subscription?")) return;
+    await api(`/billing/tenants/${tenantId}/subscription`, { base: "/api/admin/billing", method: "DELETE" });
+    renderTenantBilling(tenantId, slotId);
+  });
+
+  const doAction = async (fn) => { try { await fn(); renderTenantBilling(tenantId, slotId); } catch (e) { alert(e.message); } };
+  slot.querySelectorAll("[data-issue]").forEach((b) => b.addEventListener("click", () =>
+    doAction(() => api(`/billing/invoices/${b.dataset.issue}/issue`, { base: "/api/admin/billing", method: "POST" }))));
+  slot.querySelectorAll("[data-cancel]").forEach((b) => b.addEventListener("click", () =>
+    doAction(() => api(`/billing/invoices/${b.dataset.cancel}/cancel`, { base: "/api/admin/billing", method: "POST" }))));
+  slot.querySelectorAll("[data-link]").forEach((b) => b.addEventListener("click", () =>
+    doAction(async () => {
+      const r = await api(`/billing/invoices/${b.dataset.link}/payment-link`, { base: "/api/admin/billing", method: "POST" });
+      if (r.hostedUrl) window.open(r.hostedUrl, "_blank");
+    })));
+  slot.querySelectorAll("[data-record]").forEach((b) => b.addEventListener("click", () => {
+    const amt = prompt("Amount received in cents (external payment):");
+    if (!amt) return;
+    doAction(() => api(`/billing/invoices/${b.dataset.record}/record-payment`, {
+      base: "/api/admin/billing", method: "POST",
+      body: JSON.stringify({ amountCents: Number(amt), currency: "EUR", reference: "admin-recorded" }),
+    }));
+  }));
+
+  g("inv-adhoc").addEventListener("click", () => {
+    g("adhoc-slot").innerHTML = `
+      <form class="inline-form" id="adhoc-form" style="margin-top:10px">
+        <div class="row">
+          <div class="field"><label>Description</label><input id="ah-desc" required></div>
+          <div class="field"><label>Amount (cents)</label><input id="ah-amt" type="number" min="0" required></div>
+          <div class="field"><label>Due date</label><input id="ah-due" type="date" required></div>
+        </div>
+        <div class="actions"><button type="submit">Create</button></div>
+      </form>`;
+    g("adhoc-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      await doAction(() => api(`/billing/tenants/${tenantId}/invoices`, {
+        base: "/api/admin/billing", method: "POST",
+        body: JSON.stringify({ description: g("ah-desc").value, amountCents: Number(g("ah-amt").value), currency: "EUR", dueDate: g("ah-due").value }),
+      }));
+    });
+  });
+}
+
+function invoiceActions(i) {
+  const B = (attr, id, label, cls = "link") => `<button class="${cls}" data-${attr}="${esc(id)}">${label}</button>`;
+  if (i.status === "draft") return B("issue", i.id, "Issue") + " " + B("cancel", i.id, "Cancel");
+  if (i.status === "issued") return B("link", i.id, "Pay link") + " " + B("record", i.id, "Record payment") + " " + B("cancel", i.id, "Cancel");
+  if (i.status === "payment_pending") return B("link", i.id, "Open pay link") + " " + B("record", i.id, "Record payment");
+  return "";
+}
+
+/* ---------------- Notifications ---------------- */
+
+let notifPollTimer = null;
+
+async function refreshNotifBadge() {
+  const badge = document.getElementById("notif-nav-badge");
+  if (!badge || !token) return;
+  try {
+    const { count } = await api("/notifications/unread-count", { base: "/api/admin" });
+    if (count > 0) { badge.textContent = count > 99 ? "99+" : count; badge.hidden = false; }
+    else badge.hidden = true;
+  } catch { /* ignore */ }
+}
+
+async function notificationsView() {
+  clearInterval(notifPollTimer);
+  const q = new URLSearchParams(location.search);
+  const unread = q.get("unread") === "1";
+  const { notifications } = await api(`/notifications${unread ? "?unread=1" : ""}`, { base: "/api/admin" });
+
+  view.innerHTML = `
+    <div class="view-head"><div><h1>Notifications</h1><p class="lede">${notifications.length} ${unread ? "unread" : "recent"}</p></div>
+      <div class="section-actions" style="margin-top:0">
+        <button class="ghost" id="run-tick" title="Run the billing job now">Run billing tick</button>
+        <button class="ghost" id="mark-all">Mark all read</button>
+      </div></div>
+    <div class="tabs" style="margin-bottom:14px">
+      <button data-u="0" class="${unread ? "" : "active"}">All</button>
+      <button data-u="1" class="${unread ? "active" : ""}">Unread</button>
+    </div>
+    <div id="tick-out"></div>
+    <table>
+      <thead><tr><th>When</th><th>Type</th><th>Tenant</th><th>Notification</th><th></th></tr></thead>
+      <tbody>
+        ${notifications.map((n) => `
+          <tr class="${n.read ? "" : "clickable"}">
+            <td>${esc(fmtDate(n.createdAt))}</td>
+            <td><span class="pill ${n.severity === "attention" ? "disabled" : ""}">${esc(n.type)}</span></td>
+            <td>${n.tenant ? `<a href="/admin/tenants/${esc(n.tenant.id)}">${esc(n.tenant.name)}</a>` : "—"}</td>
+            <td>${n.read ? "" : '<span class="dot"></span> '}${esc(n.title)}${n.body ? `<div class="muted" style="font-size:12px">${esc(n.body)}</div>` : ""}</td>
+            <td>${n.read ? "" : `<button class="link" data-read="${esc(n.id)}">Mark read</button>`}</td>
+          </tr>`).join("") || `<tr><td colspan="5" class="muted">Nothing here.</td></tr>`}
+      </tbody>
+    </table>`;
+
+  view.querySelectorAll("[data-u]").forEach((b) => b.addEventListener("click", () =>
+    navigate(b.dataset.u === "1" ? "/notifications?unread=1" : "/notifications")));
+  view.querySelectorAll("[data-read]").forEach((b) => b.addEventListener("click", async () => {
+    await api(`/notifications/${b.dataset.read}/read`, { base: "/api/admin", method: "POST" });
+    notificationsView(); refreshNotifBadge();
+  }));
+  document.getElementById("mark-all").addEventListener("click", async () => {
+    await api("/notifications/read-all", { base: "/api/admin", method: "POST" });
+    notificationsView(); refreshNotifBadge();
+  });
+  document.getElementById("run-tick").addEventListener("click", async () => {
+    const out = document.getElementById("tick-out");
+    out.innerHTML = `<p class="muted">Running…</p>`;
+    try {
+      const r = await api("/billing/tick", { base: "/api/admin/billing", method: "POST" });
+      out.innerHTML = `<p class="ok-msg">Tick done: ${esc(JSON.stringify(r))}</p>`;
+      setTimeout(() => { notificationsView(); refreshNotifBadge(); }, 400);
+    } catch (e) { out.innerHTML = `<p class="error">${esc(e.message)}</p>`; }
+  });
+
+  notifPollTimer = setInterval(() => { if (currentPath() === "/notifications") { notificationsView(); } }, 20000);
+  refreshNotifBadge();
 }
 
 async function auditView() {

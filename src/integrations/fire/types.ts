@@ -36,6 +36,18 @@ export interface PaymentRequestCreated {
   type: string;
 }
 
+/** GET /v1/paymentrequests/{code} — the fields we use for reconciliation. */
+export interface FirePaymentRequestDetail {
+  code: string;
+  status: string; // ACTIVE | EXPIRED | CLOSED | ...
+  currency: string;
+  amount: number; // minor units
+  totalAmountPaid: number; // minor units actually received
+  totalAmountAuthorised?: number;
+  countTimesPaid: number;
+  [key: string]: unknown;
+}
+
 /** A single decoded webhook event. Field names are provisional — confirm against
  *  a real Fire delivery before Phase 4 relies on them (see billing design D4/D5). */
 export interface FireWebhookEvent {

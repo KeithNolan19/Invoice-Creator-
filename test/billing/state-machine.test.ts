@@ -8,7 +8,7 @@ import {
   isInvoiceOverdue,
   mayAutoReactivate,
 } from "../../src/billing/state.ts";
-import { periodEnd, resolveAmountCents } from "../../src/billing/pricing.ts";
+import { intervalAllowedForPlan, periodEnd, resolveAmountCents } from "../../src/billing/pricing.ts";
 
 describe("invoice state machine", () => {
   const legal: [InvoiceState, InvoiceState][] = [
@@ -74,17 +74,26 @@ describe("account state", () => {
 });
 
 describe("pricing", () => {
-  it("monthly is the plan price", () => {
-    expect(resolveAmountCents(1500, "month", 5)).toBe(1500);
+  it("monthly is the plan's base price", () => {
+    expect(resolveAmountCents(1500, "month", "month", 5)).toBe(1500);
   });
   it("yearly is 12 months minus the discount", () => {
-    expect(resolveAmountCents(1000, "year", 5)).toBe(11400); // 12000 - 5%
-    expect(resolveAmountCents(1500, "year", 5)).toBe(17100);
-    expect(resolveAmountCents(2000, "year", 5)).toBe(22800);
-    expect(resolveAmountCents(1000, "year", 0)).toBe(12000);
+    expect(resolveAmountCents(1000, "month", "year", 5)).toBe(11400); // 12000 - 5%
+    expect(resolveAmountCents(1500, "month", "year", 5)).toBe(17100);
+    expect(resolveAmountCents(2000, "month", "year", 5)).toBe(22800);
+    expect(resolveAmountCents(1000, "month", "year", 0)).toBe(12000);
   });
-  it("period end is one interval later, inclusive", () => {
+  it("a daily plan bills its base amount per day", () => {
+    expect(resolveAmountCents(100, "day", "day", 5)).toBe(100);
+  });
+  it("rejects an interval a plan can't offer", () => {
+    expect(intervalAllowedForPlan("day", "month")).toBe(false);
+    expect(intervalAllowedForPlan("month", "day")).toBe(false);
+    expect(() => resolveAmountCents(100, "day", "month", 5)).toThrow();
+  });
+  it("period end / renewal", () => {
     expect(periodEnd(new Date("2026-01-01"), "month").toISOString().slice(0, 10)).toBe("2026-01-31");
     expect(periodEnd(new Date("2026-01-01"), "year").toISOString().slice(0, 10)).toBe("2026-12-31");
+    expect(periodEnd(new Date("2026-01-01"), "day").toISOString().slice(0, 10)).toBe("2026-01-01");
   });
 });

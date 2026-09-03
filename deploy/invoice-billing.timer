@@ -1,0 +1,12 @@
+[Unit]
+Description=Schedule the Invoice Creator billing tick
+
+[Timer]
+# Every 15 minutes — fine-grained enough for the €1/day test plan's 1-hour
+# renewal reminder; the tick is a no-op cheap when there is nothing due.
+OnCalendar=*:0/15
+Persistent=true
+RandomizedDelaySec=30
+
+[Install]
+WantedBy=timers.target
