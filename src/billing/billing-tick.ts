@@ -75,10 +75,10 @@ async function tick(db: Db, q: Queryable, now: Date): Promise<TickResult> {
     }
   }
 
-  // ---- 2. Overdue sweep -------------------------------------------------
+  // ---- 2. Overdue sweep — one notification per invoice (deduped) --------
   for (const inv of await listPlatformInvoices(q, { unpaidOnly: true })) {
     if (!isInvoiceOverdue(inv, cfg.overdueGraceDays, now)) continue;
-    await createNotification(q, {
+    const created = await createNotification(q, {
       type: "payment_overdue",
       tenantId: inv.tenant_id,
       invoiceId: inv.id,
@@ -87,7 +87,7 @@ async function tick(db: Db, q: Queryable, now: Date): Promise<TickResult> {
       severity: "attention",
       dedupeKey: `overdue:${inv.id}`,
     });
-    result.overdueFlagged++;
+    if (created) result.overdueFlagged++;
   }
 
   // ---- 3. Reconciliation: poll Fire for pending payments ---------------

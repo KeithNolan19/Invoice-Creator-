@@ -48,9 +48,10 @@ export interface NewNotification {
   dedupeKey?: string;
 }
 
-/** Insert a notification. With `dedupeKey`, a duplicate is a no-op. Admin context. */
-export async function createNotification(q: Queryable, n: NewNotification): Promise<void> {
-  await q.query(
+/** Insert a notification. With `dedupeKey`, a duplicate is a no-op. Returns
+ *  true only when a row was actually created. Admin context. */
+export async function createNotification(q: Queryable, n: NewNotification): Promise<boolean> {
+  const { rowCount } = await q.query(
     `INSERT INTO admin_notifications (type, tenant_id, invoice_id, payment_id, title, body, severity, dedupe_key)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
      ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`,
@@ -65,6 +66,7 @@ export async function createNotification(q: Queryable, n: NewNotification): Prom
       n.dedupeKey ?? null,
     ],
   );
+  return rowCount > 0;
 }
 
 export async function listNotifications(
