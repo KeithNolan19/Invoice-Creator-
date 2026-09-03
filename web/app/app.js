@@ -192,6 +192,7 @@ const routes = [
   { re: /^\/customers\/([0-9a-f-]{36})\/edit$/, view: viewCustomerForm, nav: "customers" },
   { re: /^\/settings\/business$/, view: viewSettingsBusiness, nav: "settings" },
   { re: /^\/settings\/payments$/, view: viewSettingsPayments, nav: "settings" },
+  { re: /^\/settings\/integrations$/, view: viewSettingsIntegrations, nav: "settings" },
   { re: /^\/settings\/team$/, view: viewSettingsTeam, nav: "settings" },
 ];
 
@@ -614,6 +615,7 @@ function settingsNav(active) {
   const items = [["business", "Business", "/app/settings/business"]];
   if (isAdmin()) {
     items.push(["payments", "Payments", "/app/settings/payments"]);
+    items.push(["integrations", "Integrations", "/app/settings/integrations"]);
     items.push(["team", "Team", "/app/settings/team"]);
   }
   return `<nav class="settings-nav">
@@ -728,6 +730,40 @@ async function viewSettingsPayments() {
     <div class="section-actions">
       <button class="disabled" disabled title="Available in the integration stage">Connect Fire.com</button>
     </div>`;
+}
+
+const ACCOUNTING_PROVIDERS = [
+  {
+    key: "xero",
+    name: "Xero",
+    blurb: "Push finalised invoices and payments to Xero so your accounts stay in sync.",
+  },
+  {
+    key: "quickbooks",
+    name: "QuickBooks",
+    blurb: "Send invoices and payments to QuickBooks Online automatically.",
+  },
+];
+
+async function viewSettingsIntegrations() {
+  if (!isAdmin()) { renderNoAccess("Integrations"); return; }
+  view.innerHTML = `
+    <div class="view-head"><div><h1>Settings</h1></div></div>
+    ${settingsNav("integrations")}
+    <p class="lede">Connect your accounting software. These are placeholders — the
+    connection flow is being designed.</p>
+    ${ACCOUNTING_PROVIDERS.map((p) => `
+      <div class="card">
+        <dl class="dl">
+          <dt>Provider</dt><dd>${esc(p.name)}</dd>
+          <dt>Status</dt><dd><span class="status">Not connected</span></dd>
+        </dl>
+        <p class="muted" style="margin-top:16px">${esc(p.blurb)}</p>
+        <div class="section-actions">
+          <button class="disabled" disabled data-provider="${esc(p.key)}"
+            title="The ${esc(p.name)} connection flow is coming soon">Connect ${esc(p.name)}</button>
+        </div>
+      </div>`).join("")}`;
 }
 
 async function viewSettingsTeam() {
